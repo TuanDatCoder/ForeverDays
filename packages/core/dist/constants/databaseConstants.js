@@ -1,0 +1,17 @@
+export const DatabaseConstants = {
+    profiles: 'profiles',
+    userStatuses: 'user_statuses',
+    couples: 'couples',
+    pairingCodes: 'pairing_codes',
+    userSizes: 'user_sizes',
+    userBobaPreferences: 'user_boba_preferences',
+    userFavorites: 'user_favorites',
+    userHobbies: 'user_hobbies',
+    milestones: 'milestones',
+    googleCalendarIntegrations: 'google_calendar_integrations',
+    reminders: 'reminders',
+    reminderLogs: 'reminder_logs',
+    widgetSettings: 'widget_settings',
+    loveDiaries: 'love_diaries',
+    diaryMedia: 'diary_media',
+};

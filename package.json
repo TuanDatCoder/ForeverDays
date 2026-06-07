@@ -1,0 +1,27 @@
+{
+  "name": "forever-days",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ForeverDays couple application monorepo",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "web:dev": "npm run dev --workspace=@forever-days/web",
+    "web:build": "npm run build --workspace=@forever-days/web",
+    "mobile:start": "npm run start --workspace=@forever-days/mobile",
+    "mobile:android": "npm run android --workspace=@forever-days/mobile",
+    "mobile:ios": "npm run ios --workspace=@forever-days/mobile",
+    "mobile:web": "npm run web --workspace=@forever-days/mobile",
+    "core:build": "npm run build --workspace=@forever-days/core"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.3"
+  },
+  "dependencies": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native": "0.81.5"
+  }
+}
