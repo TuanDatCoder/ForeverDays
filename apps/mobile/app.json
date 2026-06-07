@@ -1,5 +1,6 @@
 {
   "expo": {
+    "entryPoint": "./index.ts",
     "name": "ForeverDays",
     "slug": "mobile",
     "version": "1.0.0",

@@ -5,25 +5,15 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal",
-      "env": {
-        "EAS_BUILD_WORKINGDIR": "apps/mobile"
-      }
+      "distribution": "internal"
     },
     "preview": {
       "distribution": "internal",
       "android": {
         "buildType": "apk"
-      },
-      "env": {
-        "EAS_BUILD_WORKINGDIR": "apps/mobile"
       }
     },
-    "production": {
-      "env": {
-        "EAS_BUILD_WORKINGDIR": "apps/mobile"
-      }
-    }
+    "production": {}
   },
   "submit": {
     "production": {}
