@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "ForeverDays",
+    "slug": "mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#fadce6"
+    },
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.foreverdays.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#fadce6",
+        "foregroundImage": "./assets/android-icon-foreground.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "Cho phép ForeverDays truy cập lịch để thêm sự kiện kỷ niệm của hai bạn.",
+          "writeOnlyCalendarPermission": "Cho phép ForeverDays thêm sự kiện kỷ niệm vào lịch của bạn."
+        }
+      ],
+      "@react-native-community/datetimepicker"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "39e77de7-8632-4920-acbf-a8ddf27db9ee"
+      }
+    }
+  }
+}
