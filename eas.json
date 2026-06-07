@@ -1,0 +1,31 @@
+{
+  "cli": {
+    "version": ">= 9.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EAS_BUILD_WORKINGDIR": "apps/mobile"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EAS_BUILD_WORKINGDIR": "apps/mobile"
+      }
+    },
+    "production": {
+      "env": {
+        "EAS_BUILD_WORKINGDIR": "apps/mobile"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

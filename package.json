@@ -14,7 +14,8 @@
     "mobile:android": "npm run android --workspace=@forever-days/mobile",
     "mobile:ios": "npm run ios --workspace=@forever-days/mobile",
     "mobile:web": "npm run web --workspace=@forever-days/mobile",
-    "core:build": "npm run build --workspace=@forever-days/core"
+    "core:build": "npm run build --workspace=@forever-days/core",
+    "postinstall": "npm run core:build"
   },
   "devDependencies": {
     "typescript": "~6.0.3"
