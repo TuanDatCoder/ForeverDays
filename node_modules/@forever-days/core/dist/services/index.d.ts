@@ -1,4 +1,4 @@
-import { UserProfile, Couple, UserStatus, UserSize, UserBobaPreference, UserFavorite, UserHobby, Milestone, Reminder, ReminderLog, LoveDiary, DiaryMedia, WidgetSetting, PairingCode } from '../models';
+import { UserProfile, Couple, UserStatus, UserSize, UserBobaPreference, UserFavorite, UserHobby, Milestone, Reminder, ReminderLog, LoveDiary, DiaryMedia, WidgetSetting, PairingCode, PartnerProfileNote, CoupleEvent, UserMoodLog, CoupleCountdownCustomization, MilestonePlan, DailyWish } from '../models';
 export declare class CoupleService {
     fetchActiveCouple(userId: string): Promise<Couple | null>;
     updateAnniversaryDate(coupleId: string, date: string): Promise<void>;
@@ -65,4 +65,38 @@ export declare class LoveDiaryService {
 export declare class DiaryMediaService {
     fetchMedia(diaryId: string): Promise<DiaryMedia[]>;
     insertMedia(mediaUrl: string, diaryId: string, mediaType?: 'image' | 'video'): Promise<void>;
+}
+export declare class PartnerProfileNoteService {
+    fetchNote(writerId: string, targetId: string): Promise<PartnerProfileNote | null>;
+    fetchReceivedNotes(targetId: string): Promise<PartnerProfileNote[]>;
+    upsertNote(note: Omit<PartnerProfileNote, 'id' | 'createdAt' | 'updatedAt'>): Promise<void>;
+    deleteNote(id: string): Promise<void>;
+}
+export declare class CoupleEventService {
+    fetchEvents(coupleId: string): Promise<CoupleEvent[]>;
+    createEvent(event: Omit<CoupleEvent, 'id' | 'createdAt' | 'updatedAt'>): Promise<void>;
+    updateEvent(event: CoupleEvent): Promise<void>;
+    deleteEvent(eventId: string): Promise<void>;
+}
+export declare class UserMoodLogService {
+    fetchMyMoodLogs(userId: string): Promise<UserMoodLog[]>;
+    fetchPartnerMoodLogs(partnerId: string): Promise<UserMoodLog[]>;
+    createMoodLog(log: Omit<UserMoodLog, 'id' | 'createdAt' | 'updatedAt'>): Promise<void>;
+    deleteMoodLog(logId: string): Promise<void>;
+}
+export declare class CoupleCountdownCustomizationService {
+    fetchCustomization(coupleId: string): Promise<CoupleCountdownCustomization | null>;
+    upsertCustomization(customization: Omit<CoupleCountdownCustomization, 'id' | 'createdAt' | 'updatedAt'>): Promise<void>;
+}
+export declare class UserPushTokenService {
+    updatePushToken(userId: string, token: string): Promise<void>;
+    fetchPushToken(userId: string): Promise<string | null>;
+}
+export declare class MilestonePlanService {
+    fetchPlans(coupleId: string): Promise<MilestonePlan[]>;
+    createPlan(coupleId: string, milestoneTitle: string, category: 'go' | 'eat' | 'play', content: string, milestoneId?: string): Promise<MilestonePlan | null>;
+    deletePlan(planId: string): Promise<void>;
+}
+export declare class DailyWishService {
+    fetchAllWishes(): Promise<DailyWish[]>;
 }

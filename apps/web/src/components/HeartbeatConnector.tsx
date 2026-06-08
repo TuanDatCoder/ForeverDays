@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Cake, PartyPopper } from 'lucide-react';
+import { Cake } from 'lucide-react';
 
 interface HeartbeatConnectorProps {
   days: number;

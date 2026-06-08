@@ -4,10 +4,7 @@ import {
   ScrollView, KeyboardAvoidingView, Platform
 } from 'react-native';
 import { useRelationship } from '../core/RelationshipContext';
-
-// Simple eye icons as text (tránh phụ thuộc icon lib)
-const EyeIcon = () => <Text style={styles.eyeIcon}>👁</Text>;
-const EyeOffIcon = () => <Text style={styles.eyeIcon}>🙈</Text>;
+import { Eye, EyeOff } from 'lucide-react-native';
 
 export const AuthScreen: React.FC = () => {
   const { register, signIn, startDemoMode, error, isLoading, clearError } = useRelationship();
@@ -90,7 +87,7 @@ export const AuthScreen: React.FC = () => {
                 style={styles.eyeButton}
                 activeOpacity={0.6}
               >
-                {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+                {showPassword ? <EyeOff size={18} color={AppTheme.textSecondary} /> : <Eye size={18} color={AppTheme.textSecondary} />}
               </TouchableOpacity>
             </View>
           </View>

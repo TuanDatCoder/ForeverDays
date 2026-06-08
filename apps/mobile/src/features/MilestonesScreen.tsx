@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Linking, Alert, Platform, InteractionManager, ActivityIndicator, Animated } from 'react-native';
-import { useRelationship } from '../core/RelationshipContext';
-import { MilestoneService } from '@forever-days/core';
-import { Calendar, Trash2, Heart, Clock, CheckCircle2 } from 'lucide-react-native';
+import { useRelationship, demoStorage } from '../core/RelationshipContext';
+import { MilestoneService, CoupleEventService, MilestonePlanService } from '@forever-days/core';
+import type { CoupleEvent, MilestonePlan } from '@forever-days/core';
+import { Calendar, Trash2, Heart, Clock, CheckCircle2, Compass, ChevronDown, ChevronUp, Utensils, Gamepad2, MapPin } from 'lucide-react-native';
 import * as ExpoCalendar from 'expo-calendar';
 
 import { LoveUtils, MilestoneItem } from '../core/loveUtils';
@@ -13,6 +14,29 @@ let cachedMilestones: MilestoneItem[] | null = null;
 export const MilestonesScreen: React.FC = () => {
   const { anniversaryDate, coupleId, isDemoMode } = useRelationship();
   const [customMilestones, setCustomMilestones] = useState<MilestoneItem[]>([]);
+
+  // Milestone Plans State
+  const [plans, setPlans] = useState<MilestonePlan[]>([]);
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [newPlanCategory, setNewPlanCategory] = useState<'go' | 'eat' | 'play'>('go');
+  const [newPlanContent, setNewPlanContent] = useState('');
+  const [isAddingPlan, setIsAddingPlan] = useState(false);
+
+  const planService = new MilestonePlanService();
+
+  const getMilestoneKey = (item: MilestoneItem) => item.id || item.title;
+
+  // Couple Events State
+  const [coupleEvents, setCoupleEvents] = useState<CoupleEvent[]>([]);
+  const [isOpenAddEventModal, setIsOpenAddEventModal] = useState(false);
+  const [eventTitle, setEventTitle] = useState('');
+  const [eventDate, setEventDate] = useState('');
+  const [eventTime, setEventTime] = useState('');
+  const [eventLocation, setEventLocation] = useState('');
+  const [eventDescription, setEventDescription] = useState('');
+  const [isAddingEvent, setIsAddingEvent] = useState(false);
+
+  const eventService = new CoupleEventService();
   const [isSyncing, setIsSyncing] = useState(false);
   const [showSyncSuccess, setShowSyncSuccess] = useState(false);
   // If cache exists, skip the artificial loading delay
@@ -98,9 +122,145 @@ export const MilestonesScreen: React.FC = () => {
     return () => task.cancel();
   }, [isReady]);
 
+  const loadCoupleEvents = async () => {
+    if (isDemoMode) {
+      const saved = demoStorage['demo_couple_events'];
+      if (saved) {
+        try {
+          setCoupleEvents(JSON.parse(saved));
+        } catch {}
+      } else {
+        const defaultEvents: CoupleEvent[] = [
+          {
+            id: 'e-1',
+            coupleId: 'demo-couple-id',
+            title: 'Hẹn hò xem phim',
+            eventDate: '2026-06-07',
+            eventTime: '19:00',
+            location: 'CGV Vincom',
+            description: 'Xem phim Doraemon mới ra rạp, sau đó đi ăn kem bơ.',
+            createdAt: new Date().toISOString()
+          }
+        ];
+        setCoupleEvents(defaultEvents);
+        demoStorage['demo_couple_events'] = JSON.stringify(defaultEvents);
+      }
+      return;
+    }
+
+    if (!coupleId) return;
+    try {
+      const list = await eventService.fetchEvents(coupleId);
+      setCoupleEvents(list);
+    } catch {}
+  };
+
+  const loadPlans = async () => {
+    if (isDemoMode) {
+      const saved = demoStorage['demo_milestone_plans'];
+      if (saved) {
+        try {
+          setPlans(JSON.parse(saved));
+        } catch {}
+      } else {
+        const mockPlans: MilestonePlan[] = [
+          {
+            id: 'plan-1',
+            coupleId: 'demo-couple-id',
+            milestoneTitle: '100 Ngày Yêu Nhau',
+            category: 'eat',
+            content: 'Ăn tối lãng mạn tại quán nướng gần hồ',
+          },
+          {
+            id: 'plan-2',
+            coupleId: 'demo-couple-id',
+            milestoneTitle: '100 Ngày Yêu Nhau',
+            category: 'go',
+            content: 'Đi dạo quanh hồ Tây',
+          },
+          {
+            id: 'plan-3',
+            coupleId: 'demo-couple-id',
+            milestoneTitle: '1000 Ngày Yêu Nhau',
+            category: 'go',
+            content: 'Đi du lịch Đà Lạt cùng nhau',
+          },
+          {
+            id: 'plan-4',
+            coupleId: 'demo-couple-id',
+            milestoneTitle: '1000 Ngày Yêu Nhau',
+            category: 'eat',
+            content: 'Ăn lẩu gà lá é',
+          },
+          {
+            id: 'plan-5',
+            coupleId: 'demo-couple-id',
+            milestoneTitle: '1000 Ngày Yêu Nhau',
+            category: 'play',
+            content: 'Chơi bắn cung, trượt phao cỏ',
+          }
+        ];
+        setPlans(mockPlans);
+        demoStorage['demo_milestone_plans'] = JSON.stringify(mockPlans);
+      }
+      return;
+    }
+
+    if (!coupleId) return;
+    try {
+      const dbPlans = await planService.fetchPlans(coupleId);
+      setPlans(dbPlans);
+    } catch {}
+  };
+
+  const handleAddPlan = async (milestoneTitle: string, milestoneId?: string) => {
+    if (!newPlanContent.trim()) return;
+
+    setIsAddingPlan(true);
+    const content = newPlanContent.trim();
+    const category = newPlanCategory;
+
+    if (isDemoMode) {
+      const newPlanItem: MilestonePlan = {
+        id: `plan-${Date.now()}`,
+        coupleId: 'demo-couple-id',
+        milestoneId,
+        milestoneTitle,
+        category,
+        content,
+      };
+      const updatedList = [...plans, newPlanItem];
+      setPlans(updatedList);
+      demoStorage['demo_milestone_plans'] = JSON.stringify(updatedList);
+    } else if (coupleId) {
+      const created = await planService.createPlan(coupleId, milestoneTitle, category, content, milestoneId);
+      if (created) {
+        setPlans(prev => [...prev, created]);
+      } else {
+        await loadPlans();
+      }
+    }
+
+    setNewPlanContent('');
+    setIsAddingPlan(false);
+  };
+
+  const handleDeletePlan = async (planId: string) => {
+    if (isDemoMode) {
+      const updatedList = plans.filter(p => p.id !== planId);
+      setPlans(updatedList);
+      demoStorage['demo_milestone_plans'] = JSON.stringify(updatedList);
+    } else {
+      await planService.deletePlan(planId);
+      setPlans(prev => prev.filter(p => p.id !== planId));
+    }
+  };
+
   useEffect(() => {
     if (isReady) {
       loadCustomMilestones();
+      loadCoupleEvents();
+      loadPlans();
     }
   }, [coupleId, isDemoMode, isReady]);
 
@@ -154,6 +314,70 @@ export const MilestonesScreen: React.FC = () => {
     if (!isDemoMode && item.id) {
       await milestoneService.deleteMilestone(item.id);
     }
+  };
+
+  const handleAddCoupleEvent = async () => {
+    if (!eventTitle.trim() || !eventDate || !eventTime || !eventLocation) {
+      Alert.alert('Lỗi', 'Vui lòng điền đầy đủ tiêu đề, ngày, giờ và địa điểm.');
+      return;
+    }
+
+    setIsAddingEvent(true);
+    const newEventData = {
+      coupleId: coupleId || 'demo-couple-id',
+      title: eventTitle.trim(),
+      eventDate,
+      eventTime,
+      location: eventLocation.trim(),
+      description: eventDescription.trim(),
+    };
+
+    try {
+      if (isDemoMode) {
+        const id = `e-${Date.now()}`;
+        const updated = [{ id, createdAt: new Date().toISOString(), ...newEventData } as CoupleEvent, ...coupleEvents];
+        setCoupleEvents(updated);
+        demoStorage['demo_couple_events'] = JSON.stringify(updated);
+        Alert.alert('Thành công', 'Đã lưu hoạt động (Demo)');
+      } else {
+        await eventService.createEvent(newEventData);
+        Alert.alert('Thành công', 'Đã lưu hoạt động');
+        await loadCoupleEvents();
+      }
+      setEventTitle('');
+      setEventDate('');
+      setEventTime('');
+      setEventLocation('');
+      setEventDescription('');
+      setIsOpenAddEventModal(false);
+    } catch {
+      Alert.alert('Lỗi', 'Không thể lưu hoạt động.');
+    }
+    setIsAddingEvent(false);
+  };
+
+  const handleDeleteCoupleEvent = async (id: string) => {
+    Alert.alert('Xác nhận', 'Bạn có chắc chắn muốn xóa hoạt động này?', [
+      { text: 'Hủy', style: 'cancel' },
+      {
+        text: 'Xóa',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            if (isDemoMode) {
+              const updated = coupleEvents.filter(e => e.id !== id);
+              setCoupleEvents(updated);
+              demoStorage['demo_couple_events'] = JSON.stringify(updated);
+            } else {
+              await eventService.deleteEvent(id);
+              await loadCoupleEvents();
+            }
+          } catch {
+            Alert.alert('Lỗi', 'Không thể xóa hoạt động.');
+          }
+        }
+      }
+    ]);
   };
 
   // Generate system list memoized
@@ -350,6 +574,52 @@ export const MilestonesScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
+        {/* Daily Couple Events Section */}
+        <View style={[styles.sectionFrame, { marginBottom: 20 }]}>
+          <View style={[styles.sectionHeaderBar, { backgroundColor: 'rgba(0, 184, 148, 0.04)' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Heart size={15} color={AppTheme.colorSecondary} fill={AppTheme.colorSecondary} />
+              <Text style={styles.sectionHeaderTitle}>Hoạt động & Chuyến đi</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setIsOpenAddEventModal(true)}
+              style={styles.syncBtn}
+            >
+              <Text style={styles.syncBtnText}>+ Thêm</Text>
+            </TouchableOpacity>
+          </View>
+
+          {coupleEvents.length === 0 ? (
+            <View style={{ padding: 20, alignItems: 'center' }}>
+              <Text style={styles.descText}>Chưa có hoạt động hay chuyến đi nào được lưu.</Text>
+            </View>
+          ) : (
+            <ScrollView nestedScrollEnabled style={{ maxHeight: 300 }} contentContainerStyle={{ padding: 12 }}>
+              {coupleEvents.map((event, idx) => (
+                <View key={`event-${idx}`} style={styles.itemCard}>
+                  <View style={{ flex: 1, paddingRight: 6 }}>
+                    <Text style={styles.itemTitle}>{event.title}</Text>
+                    <Text style={styles.itemDate}>
+                      📅 {event.eventDate} lúc {event.eventTime}
+                    </Text>
+                    <Text style={[styles.descText, { marginTop: 4, fontWeight: '700' }]}>
+                      📍 {event.location}
+                    </Text>
+                    {event.description ? (
+                      <Text style={[styles.descText, { marginTop: 2 }]}>{event.description}</Text>
+                    ) : null}
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => handleDeleteCoupleEvent(event.id!)}
+                    style={{ padding: 4 }}
+                  >
+                    <Trash2 size={18} color={AppTheme.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+        </View>
         {/* Upcoming Section Container Box */}
         {upcoming.length > 0 && (
           <View style={styles.sectionFrame}>
@@ -366,35 +636,169 @@ export const MilestonesScreen: React.FC = () => {
 
             {/* Scrollable list of items - fixed height */}
             <ScrollView nestedScrollEnabled style={{ maxHeight: 360 }} contentContainerStyle={{ padding: 12 }}>
-              {upcoming.slice(0, upcomingLimit).map((item, idx) => (
-                <View key={`up-${idx}`} style={styles.itemCard}>
-                  <View style={{ flex: 1, paddingRight: 6 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                      <Text style={styles.itemTitle}>{item.title}</Text>
-                      {item.yearLabel && (
-                        <View style={styles.yearBadge}>
-                          <Text style={styles.yearBadgeText}>{item.yearLabel}</Text>
+              {upcoming.slice(0, upcomingLimit).map((item, idx) => {
+                const mKey = getMilestoneKey(item);
+                const isExpanded = expandedKey === mKey;
+                return (
+                  <View key={`up-${idx}`} style={[styles.itemCard, { flexDirection: 'column', alignItems: 'stretch' }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <View style={{ flex: 1, paddingRight: 6 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+                          <Text style={styles.itemTitle}>{item.title}</Text>
+                          {item.yearLabel && (
+                            <View style={styles.yearBadge}>
+                              <Text style={styles.yearBadgeText}>{item.yearLabel}</Text>
+                            </View>
+                          )}
                         </View>
-                      )}
+                        <Text style={styles.itemDate}>{formatDateString(item.targetDate)}</Text>
+                        
+                        {/* Plan Toggle Button */}
+                        <TouchableOpacity
+                          onPress={() => setExpandedKey(isExpanded ? null : mKey)}
+                          style={{
+                            marginTop: 6,
+                            alignSelf: 'flex-start',
+                            backgroundColor: 'rgba(255, 101, 132, 0.08)',
+                            borderWidth: 1,
+                            borderColor: 'rgba(255, 101, 132, 0.2)',
+                            borderRadius: 12,
+                            paddingVertical: 4,
+                            paddingHorizontal: 8,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                        >
+                          <Compass size={12} color={AppTheme.colorPrimary} />
+                          <Text style={{ fontSize: 10, fontWeight: '800', color: AppTheme.colorPrimary }}>
+                            Kế hoạch ăn chơi
+                          </Text>
+                          {isExpanded ? (
+                            <ChevronUp size={10} color={AppTheme.colorPrimary} />
+                          ) : (
+                            <ChevronDown size={10} color={AppTheme.colorPrimary} />
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <View style={{ marginRight: 8, alignItems: 'flex-end' }}>
+                          <Text style={styles.descText}>Còn lại</Text>
+                          <Text style={styles.remainingText}>{item.daysRemaining} ngày</Text>
+                        </View>
+                        <TouchableOpacity onPress={() => handleAddToCalendar(item.title, item.targetDate)} style={{ marginRight: 8, padding: 4 }}>
+                          <Calendar size={18} color={AppTheme.textSecondary} />
+                        </TouchableOpacity>
+                        {item.type === 'custom' && (
+                          <TouchableOpacity onPress={() => handleDeleteMilestone(item)} style={{ padding: 4 }}>
+                            <Trash2 size={18} color={AppTheme.textSecondary} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     </View>
-                    <Text style={styles.itemDate}>{formatDateString(item.targetDate)}</Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <View style={{ marginRight: 8, alignItems: 'flex-end' }}>
-                      <Text style={styles.descText}>Còn lại</Text>
-                      <Text style={styles.remainingText}>{item.daysRemaining} ngày</Text>
-                    </View>
-                    <TouchableOpacity onPress={() => handleAddToCalendar(item.title, item.targetDate)} style={{ marginRight: 8, padding: 4 }}>
-                      <Calendar size={18} color={AppTheme.textSecondary} />
-                    </TouchableOpacity>
-                    {item.type === 'custom' && (
-                      <TouchableOpacity onPress={() => handleDeleteMilestone(item)} style={{ padding: 4 }}>
-                        <Trash2 size={18} color={AppTheme.textSecondary} />
-                      </TouchableOpacity>
+
+                    {/* Expanded Plan Section */}
+                    {isExpanded && (
+                      <View style={{ marginTop: 10, borderTopWidth: 1, borderStyle: 'dashed', borderColor: 'rgba(61, 47, 61, 0.15)', paddingTop: 8 }}>
+                        {/* plans list */}
+                        <View style={{ marginBottom: 6 }}>
+                          {plans.filter(p => p.milestoneTitle === item.title).length === 0 ? (
+                            <Text style={{ fontSize: 11, color: AppTheme.textSecondary, fontStyle: 'italic', textAlign: 'center', marginVertical: 6 }}>
+                              Chưa có kế hoạch cho mốc này 🥺
+                            </Text>
+                          ) : (
+                            plans.filter(p => p.milestoneTitle === item.title).map(plan => (
+                              <View key={plan.id} style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                backgroundColor: AppTheme.bgPrimary,
+                                borderWidth: 1,
+                                borderColor: 'rgba(61, 47, 61, 0.1)',
+                                borderRadius: 8,
+                                paddingVertical: 6,
+                                paddingHorizontal: 10,
+                                marginBottom: 4,
+                              }}>
+                                <Text style={{ fontSize: 11, fontWeight: '800', color: AppTheme.textPrimary, flex: 1 }}>
+                                  {plan.category === 'go' ? '🚗 Đi đâu: ' : plan.category === 'eat' ? '🍔 Ăn gì: ' : '🎮 Chơi gì: '}
+                                  <Text style={{ fontWeight: '600', color: AppTheme.textSecondary }}>{plan.content}</Text>
+                                </Text>
+                                <TouchableOpacity onPress={() => handleDeletePlan(plan.id!)} style={{ padding: 4 }}>
+                                  <Trash2 size={13} color={AppTheme.colorWarning} />
+                                </TouchableOpacity>
+                              </View>
+                            ))
+                          )}
+                        </View>
+
+                        {/* category selector */}
+                        <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8 }}>
+                          {(['go', 'eat', 'play'] as const).map(cat => (
+                            <TouchableOpacity
+                              key={cat}
+                              onPress={() => setNewPlanCategory(cat)}
+                              style={{
+                                flex: 1,
+                                paddingVertical: 6,
+                                borderWidth: 1.2,
+                                borderRadius: 8,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                backgroundColor: newPlanCategory === cat ? 'rgba(255, 101, 132, 0.1)' : AppTheme.bgCard,
+                                borderColor: newPlanCategory === cat ? AppTheme.colorPrimary : 'rgba(61, 47, 61, 0.2)',
+                              }}
+                            >
+                              <Text style={{ fontSize: 10, fontWeight: '800', color: newPlanCategory === cat ? AppTheme.colorPrimary : AppTheme.textSecondary }}>
+                                {cat === 'go' ? '🚗 Đi đâu' : cat === 'eat' ? '🍔 Ăn gì' : '🎮 Chơi gì'}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+
+                        {/* Input and add button */}
+                        <View style={{ flexDirection: 'row', gap: 6 }}>
+                          <TextInput
+                            value={newPlanContent}
+                            onChangeText={setNewPlanContent}
+                            placeholder="Kế hoạch: Ăn uống, vui chơi..."
+                            placeholderTextColor="#999"
+                            style={{
+                              flex: 1,
+                              borderWidth: 1.2,
+                              borderColor: AppTheme.borderColor,
+                              borderRadius: 8,
+                              backgroundColor: AppTheme.bgPrimary,
+                              paddingVertical: 6,
+                              paddingHorizontal: 10,
+                              fontSize: 12,
+                              color: AppTheme.textPrimary,
+                              fontWeight: '600',
+                            }}
+                          />
+                          <TouchableOpacity
+                            onPress={() => handleAddPlan(item.title, item.id)}
+                            disabled={isAddingPlan}
+                            style={{
+                              backgroundColor: AppTheme.colorPrimary,
+                              borderWidth: 1.2,
+                              borderColor: AppTheme.borderColor,
+                              borderRadius: 8,
+                              paddingHorizontal: 12,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Text style={{ color: AppTheme.borderColor, fontWeight: '800', fontSize: 12 }}>
+                              {isAddingPlan ? '...' : '+ Thêm'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
                     )}
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </ScrollView>
 
             {/* Load more button - OUTSIDE ScrollView so always visible */}
@@ -436,34 +840,168 @@ export const MilestonesScreen: React.FC = () => {
 
             {/* Scrollable list of items */}
             <ScrollView nestedScrollEnabled style={{ maxHeight: 240 }} contentContainerStyle={{ padding: 12 }}>
-              {passed.map((item, idx) => (
-                <View key={`pass-${idx}`} style={[styles.itemCard, styles.passedItemCard]}>
-                  <View style={{ flex: 1, paddingRight: 6 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                      <Text style={[styles.itemTitle, styles.passedTitle]}>{item.title}</Text>
-                      {item.yearLabel && (
-                        <View style={styles.yearBadgePassed}>
-                          <Text style={styles.yearBadgeTextPassed}>{item.yearLabel}</Text>
+              {passed.map((item, idx) => {
+                const mKey = getMilestoneKey(item);
+                const isExpanded = expandedKey === mKey;
+                return (
+                  <View key={`pass-${idx}`} style={[styles.itemCard, styles.passedItemCard, { flexDirection: 'column', alignItems: 'stretch' }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <View style={{ flex: 1, paddingRight: 6 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+                          <Text style={[styles.itemTitle, styles.passedTitle]}>{item.title}</Text>
+                          {item.yearLabel && (
+                            <View style={styles.yearBadgePassed}>
+                              <Text style={styles.yearBadgeTextPassed}>{item.yearLabel}</Text>
+                            </View>
+                          )}
                         </View>
-                      )}
+                        <Text style={styles.itemDate}>{formatDateString(item.targetDate)}</Text>
+                        
+                        {/* Plan Toggle Button */}
+                        <TouchableOpacity
+                          onPress={() => setExpandedKey(isExpanded ? null : mKey)}
+                          style={{
+                            marginTop: 6,
+                            alignSelf: 'flex-start',
+                            backgroundColor: 'rgba(0, 184, 148, 0.08)',
+                            borderWidth: 1,
+                            borderColor: 'rgba(0, 184, 148, 0.2)',
+                            borderRadius: 12,
+                            paddingVertical: 4,
+                            paddingHorizontal: 8,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                        >
+                          <Compass size={12} color={AppTheme.colorSecondary} />
+                          <Text style={{ fontSize: 10, fontWeight: '800', color: AppTheme.colorSecondary }}>
+                            Lịch sử ăn chơi
+                          </Text>
+                          {isExpanded ? (
+                            <ChevronUp size={10} color={AppTheme.colorSecondary} />
+                          ) : (
+                            <ChevronDown size={10} color={AppTheme.colorSecondary} />
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <View style={styles.passedBadge}>
+                          <Text style={styles.passedBadgeText}>Đã qua</Text>
+                        </View>
+                        <TouchableOpacity onPress={() => handleAddToCalendar(item.title, item.targetDate)} style={{ marginLeft: 8, padding: 4 }}>
+                          <Calendar size={18} color={AppTheme.textSecondary} />
+                        </TouchableOpacity>
+                        {item.type === 'custom' && (
+                          <TouchableOpacity onPress={() => handleDeleteMilestone(item)} style={{ marginLeft: 8, padding: 4 }}>
+                            <Trash2 size={18} color={AppTheme.textSecondary} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     </View>
-                    <Text style={styles.itemDate}>{formatDateString(item.targetDate)}</Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <View style={styles.passedBadge}>
-                      <Text style={styles.passedBadgeText}>Đã qua</Text>
-                    </View>
-                    <TouchableOpacity onPress={() => handleAddToCalendar(item.title, item.targetDate)} style={{ marginLeft: 8, padding: 4 }}>
-                      <Calendar size={18} color={AppTheme.textSecondary} />
-                    </TouchableOpacity>
-                    {item.type === 'custom' && (
-                      <TouchableOpacity onPress={() => handleDeleteMilestone(item)} style={{ marginLeft: 8, padding: 4 }}>
-                        <Trash2 size={18} color={AppTheme.textSecondary} />
-                      </TouchableOpacity>
+
+                    {/* Expanded Plan Section */}
+                    {isExpanded && (
+                      <View style={{ marginTop: 10, borderTopWidth: 1, borderStyle: 'dashed', borderColor: 'rgba(61, 47, 61, 0.15)', paddingTop: 8 }}>
+                        {/* plans list */}
+                        <View style={{ marginBottom: 6 }}>
+                          {plans.filter(p => p.milestoneTitle === item.title).length === 0 ? (
+                            <Text style={{ fontSize: 11, color: AppTheme.textSecondary, fontStyle: 'italic', textAlign: 'center', marginVertical: 6 }}>
+                              Chưa có lịch sử hoạt động 🥺
+                            </Text>
+                          ) : (
+                            plans.filter(p => p.milestoneTitle === item.title).map(plan => (
+                              <View key={plan.id} style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                backgroundColor: AppTheme.bgPrimary,
+                                borderWidth: 1,
+                                borderColor: 'rgba(61, 47, 61, 0.1)',
+                                borderRadius: 8,
+                                paddingVertical: 6,
+                                paddingHorizontal: 10,
+                                marginBottom: 4,
+                              }}>
+                                <Text style={{ fontSize: 11, fontWeight: '800', color: AppTheme.textPrimary, flex: 1 }}>
+                                  {plan.category === 'go' ? '🚗 Đã đi: ' : plan.category === 'eat' ? '🍔 Đã ăn: ' : '🎮 Đã chơi: '}
+                                  <Text style={{ fontWeight: '600', color: AppTheme.textSecondary }}>{plan.content}</Text>
+                                </Text>
+                                <TouchableOpacity onPress={() => handleDeletePlan(plan.id!)} style={{ padding: 4 }}>
+                                  <Trash2 size={13} color={AppTheme.colorWarning} />
+                                </TouchableOpacity>
+                              </View>
+                            ))
+                          )}
+                        </View>
+
+                        {/* category selector */}
+                        <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8 }}>
+                          {(['go', 'eat', 'play'] as const).map(cat => (
+                            <TouchableOpacity
+                              key={cat}
+                              onPress={() => setNewPlanCategory(cat)}
+                              style={{
+                                flex: 1,
+                                paddingVertical: 6,
+                                borderWidth: 1.2,
+                                borderRadius: 8,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                backgroundColor: newPlanCategory === cat ? 'rgba(255, 101, 132, 0.1)' : AppTheme.bgCard,
+                                borderColor: newPlanCategory === cat ? AppTheme.colorPrimary : 'rgba(61, 47, 61, 0.2)',
+                              }}
+                            >
+                              <Text style={{ fontSize: 10, fontWeight: '800', color: newPlanCategory === cat ? AppTheme.colorPrimary : AppTheme.textSecondary }}>
+                                {cat === 'go' ? '🚗 Đi đâu' : cat === 'eat' ? '🍔 Ăn gì' : '🎮 Chơi gì'}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+
+                        {/* Input and add button */}
+                        <View style={{ flexDirection: 'row', gap: 6 }}>
+                          <TextInput
+                            value={newPlanContent}
+                            onChangeText={setNewPlanContent}
+                            placeholder="Kế hoạch: Ăn uống, vui chơi..."
+                            placeholderTextColor="#999"
+                            style={{
+                              flex: 1,
+                              borderWidth: 1.2,
+                              borderColor: AppTheme.borderColor,
+                              borderRadius: 8,
+                              backgroundColor: AppTheme.bgPrimary,
+                              paddingVertical: 6,
+                              paddingHorizontal: 10,
+                              fontSize: 12,
+                              color: AppTheme.textPrimary,
+                              fontWeight: '600',
+                            }}
+                          />
+                          <TouchableOpacity
+                            onPress={() => handleAddPlan(item.title, item.id)}
+                            disabled={isAddingPlan}
+                            style={{
+                              backgroundColor: AppTheme.colorPrimary,
+                              borderWidth: 1.2,
+                              borderColor: AppTheme.borderColor,
+                              borderRadius: 8,
+                              paddingHorizontal: 12,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Text style={{ color: AppTheme.borderColor, fontWeight: '800', fontSize: 12 }}>
+                              {isAddingPlan ? '...' : '+ Thêm'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
                     )}
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </ScrollView>
           </View>
         )}
@@ -538,6 +1076,79 @@ export const MilestonesScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
           </View>
+        </View>
+      )}
+
+      {/* Add Couple Event Modal */}
+      {isOpenAddEventModal && (
+        <View style={styles.modalOverlay}>
+          <ScrollView contentContainerStyle={{ justifyContent: 'center', flexGrow: 1, paddingVertical: 40 }}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalHeader}>Thêm hoạt động mới</Text>
+
+              <Text style={styles.label}>Tên hoạt động</Text>
+              <TextInput
+                value={eventTitle}
+                onChangeText={setEventTitle}
+                placeholder="Ví dụ: Đi xem phim, Ăn tối..."
+                placeholderTextColor="#666"
+                style={styles.input}
+              />
+
+              <Text style={[styles.label, { marginTop: 12 }]}>Ngày diễn ra (YYYY-MM-DD)</Text>
+              <TextInput
+                value={eventDate}
+                onChangeText={setEventDate}
+                placeholder="Ví dụ: 2026-06-08"
+                placeholderTextColor="#666"
+                style={styles.input}
+              />
+
+              <Text style={[styles.label, { marginTop: 12 }]}>Giờ diễn ra (HH:MM)</Text>
+              <TextInput
+                value={eventTime}
+                onChangeText={setEventTime}
+                placeholder="Ví dụ: 19:30"
+                placeholderTextColor="#666"
+                style={styles.input}
+              />
+
+              <Text style={[styles.label, { marginTop: 12 }]}>Địa điểm/Vị trí</Text>
+              <TextInput
+                value={eventLocation}
+                onChangeText={setEventLocation}
+                placeholder="Ví dụ: Lotte Cinema Tây Hồ"
+                placeholderTextColor="#666"
+                style={styles.input}
+              />
+
+              <Text style={[styles.label, { marginTop: 12 }]}>Mô tả chi tiết</Text>
+              <TextInput
+                value={eventDescription}
+                onChangeText={setEventDescription}
+                placeholder="Ghi chú chi tiết hoạt động hôm đó..."
+                placeholderTextColor="#666"
+                multiline
+                style={[styles.input, { height: 80, textAlignVertical: 'top', marginBottom: 20 }]}
+              />
+
+              <View style={styles.rowEnd}>
+                <TouchableOpacity
+                  onPress={() => setIsOpenAddEventModal(false)}
+                  style={[styles.actionBtn, styles.secondaryActionBtn]}
+                >
+                  <Text style={styles.secondaryActionBtnText}>Hủy</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleAddCoupleEvent}
+                  disabled={isAddingEvent}
+                  style={[styles.actionBtn, { marginLeft: 8 }]}
+                >
+                  <Text style={styles.actionBtnText}>{isAddingEvent ? 'Đang lưu...' : 'Lưu'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
         </View>
       )}
     </View>

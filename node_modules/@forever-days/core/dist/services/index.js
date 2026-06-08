@@ -1,6 +1,6 @@
 import { supabase } from '../supabaseClient';
 import { DatabaseConstants } from '../constants/databaseConstants';
-import { mapProfileFromDb, mapProfileToDb, mapCoupleFromDb, mapUserStatusFromDb, mapUserSizeFromDb, mapBobaPreferenceFromDb, mapFavoriteFromDb, mapHobbyFromDb, mapMilestoneFromDb, mapReminderFromDb, mapReminderToDb, mapReminderLogFromDb, mapLoveDiaryFromDb, mapLoveDiaryToDb, mapDiaryMediaFromDb, mapWidgetSettingFromDb } from '../models';
+import { mapProfileFromDb, mapProfileToDb, mapCoupleFromDb, mapUserStatusFromDb, mapUserSizeFromDb, mapBobaPreferenceFromDb, mapFavoriteFromDb, mapHobbyFromDb, mapMilestoneFromDb, mapReminderFromDb, mapReminderToDb, mapReminderLogFromDb, mapLoveDiaryFromDb, mapLoveDiaryToDb, mapDiaryMediaFromDb, mapWidgetSettingFromDb, mapPartnerProfileNoteFromDb, mapPartnerProfileNoteToDb, mapCoupleEventFromDb, mapCoupleEventToDb, mapUserMoodLogFromDb, mapUserMoodLogToDb, mapCoupleCountdownCustomizationFromDb, mapCoupleCountdownCustomizationToDb, mapMilestonePlanFromDb, mapDailyWishFromDb } from '../models';
 export class CoupleService {
     async fetchActiveCouple(userId) {
         try {
@@ -462,5 +462,243 @@ export class DiaryMediaService {
             media_url: mediaUrl,
             media_type: mediaType,
         });
+    }
+}
+export class PartnerProfileNoteService {
+    async fetchNote(writerId, targetId) {
+        try {
+            const { data, error } = await supabase
+                .from(DatabaseConstants.partnerProfileNotes)
+                .select()
+                .eq('writer_id', writerId)
+                .eq('target_id', targetId)
+                .maybeSingle();
+            if (error || !data)
+                return null;
+            return mapPartnerProfileNoteFromDb(data);
+        }
+        catch {
+            return null;
+        }
+    }
+    async fetchReceivedNotes(targetId) {
+        try {
+            const { data, error } = await supabase
+                .from(DatabaseConstants.partnerProfileNotes)
+                .select()
+                .eq('target_id', targetId)
+                .eq('is_shared', true);
+            if (error || !data)
+                return [];
+            return data.map(mapPartnerProfileNoteFromDb);
+        }
+        catch {
+            return [];
+        }
+    }
+    async upsertNote(note) {
+        const dbData = mapPartnerProfileNoteToDb(note);
+        await supabase
+            .from(DatabaseConstants.partnerProfileNotes)
+            .upsert(dbData, { onConflict: 'writer_id,target_id' });
+    }
+    async deleteNote(id) {
+        await supabase
+            .from(DatabaseConstants.partnerProfileNotes)
+            .delete()
+            .eq('id', id);
+    }
+}
+export class CoupleEventService {
+    async fetchEvents(coupleId) {
+        try {
+            const { data, error } = await supabase
+                .from(DatabaseConstants.coupleEvents)
+                .select()
+                .eq('couple_id', coupleId)
+                .order('event_date', { ascending: false })
+                .order('event_time', { ascending: false });
+            if (error || !data)
+                return [];
+            return data.map(mapCoupleEventFromDb);
+        }
+        catch {
+            return [];
+        }
+    }
+    async createEvent(event) {
+        const dbData = mapCoupleEventToDb(event);
+        delete dbData.id;
+        await supabase
+            .from(DatabaseConstants.coupleEvents)
+            .insert(dbData);
+    }
+    async updateEvent(event) {
+        const dbData = mapCoupleEventToDb(event);
+        await supabase
+            .from(DatabaseConstants.coupleEvents)
+            .update(dbData)
+            .eq('id', event.id);
+    }
+    async deleteEvent(eventId) {
+        await supabase
+            .from(DatabaseConstants.coupleEvents)
+            .delete()
+            .eq('id', eventId);
+    }
+}
+export class UserMoodLogService {
+    async fetchMyMoodLogs(userId) {
+        try {
+            const { data, error } = await supabase
+                .from(DatabaseConstants.userMoodLogs)
+                .select()
+                .eq('user_id', userId)
+                .order('created_at', { ascending: false });
+            if (error || !data)
+                return [];
+            return data.map(mapUserMoodLogFromDb);
+        }
+        catch {
+            return [];
+        }
+    }
+    async fetchPartnerMoodLogs(partnerId) {
+        try {
+            const { data, error } = await supabase
+                .from(DatabaseConstants.userMoodLogs)
+                .select()
+                .eq('user_id', partnerId)
+                .eq('is_shared', true)
+                .order('created_at', { ascending: false });
+            if (error || !data)
+                return [];
+            return data.map(mapUserMoodLogFromDb);
+        }
+        catch {
+            return [];
+        }
+    }
+    async createMoodLog(log) {
+        const dbData = mapUserMoodLogToDb(log);
+        delete dbData.id;
+        await supabase
+            .from(DatabaseConstants.userMoodLogs)
+            .insert(dbData);
+    }
+    async deleteMoodLog(logId) {
+        await supabase
+            .from(DatabaseConstants.userMoodLogs)
+            .delete()
+            .eq('id', logId);
+    }
+}
+export class CoupleCountdownCustomizationService {
+    async fetchCustomization(coupleId) {
+        try {
+            const { data, error } = await supabase
+                .from(DatabaseConstants.coupleCountdownCustomizations)
+                .select()
+                .eq('couple_id', coupleId)
+                .maybeSingle();
+            if (error || !data)
+                return null;
+            return mapCoupleCountdownCustomizationFromDb(data);
+        }
+        catch {
+            return null;
+        }
+    }
+    async upsertCustomization(customization) {
+        const dbData = mapCoupleCountdownCustomizationToDb(customization);
+        await supabase
+            .from(DatabaseConstants.coupleCountdownCustomizations)
+            .upsert(dbData, { onConflict: 'couple_id' });
+    }
+}
+export class UserPushTokenService {
+    async updatePushToken(userId, token) {
+        await supabase
+            .from(DatabaseConstants.userPushTokens)
+            .upsert({
+            user_id: userId,
+            push_token: token,
+            updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+    }
+    async fetchPushToken(userId) {
+        try {
+            const { data, error } = await supabase
+                .from(DatabaseConstants.userPushTokens)
+                .select('push_token')
+                .eq('user_id', userId)
+                .maybeSingle();
+            if (error || !data)
+                return null;
+            return data.push_token;
+        }
+        catch {
+            return null;
+        }
+    }
+}
+export class MilestonePlanService {
+    async fetchPlans(coupleId) {
+        try {
+            const { data, error } = await supabase
+                .from(DatabaseConstants.milestonePlans)
+                .select()
+                .eq('couple_id', coupleId)
+                .order('created_at', { ascending: true });
+            if (error || !data)
+                return [];
+            return data.map(mapMilestonePlanFromDb);
+        }
+        catch {
+            return [];
+        }
+    }
+    async createPlan(coupleId, milestoneTitle, category, content, milestoneId) {
+        try {
+            const { data, error } = await supabase
+                .from(DatabaseConstants.milestonePlans)
+                .insert({
+                couple_id: coupleId,
+                milestone_title: milestoneTitle,
+                category,
+                content,
+                milestone_id: milestoneId || null,
+            })
+                .select()
+                .single();
+            if (error || !data)
+                return null;
+            return mapMilestonePlanFromDb(data);
+        }
+        catch {
+            return null;
+        }
+    }
+    async deletePlan(planId) {
+        await supabase
+            .from(DatabaseConstants.milestonePlans)
+            .delete()
+            .eq('id', planId);
+    }
+}
+export class DailyWishService {
+    async fetchAllWishes() {
+        try {
+            const { data, error } = await supabase
+                .from(DatabaseConstants.dailyWishes)
+                .select()
+                .order('created_at', { ascending: true });
+            if (error || !data)
+                return [];
+            return data.map(mapDailyWishFromDb);
+        }
+        catch {
+            return [];
+        }
     }
 }

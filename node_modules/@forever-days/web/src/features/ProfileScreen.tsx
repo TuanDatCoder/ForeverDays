@@ -3,10 +3,11 @@ import { useRelationship } from '../core/RelationshipContext';
 import { LoveUtils } from '../core/loveUtils';
 import {
   UserSizeService, UserBobaPreferenceService,
-  UserHobbyService, UserFavoriteService, CoupleService
+  UserHobbyService, UserFavoriteService, CoupleService,
+  PartnerProfileNoteService, UserPushTokenService
 } from '@forever-days/core';
-import type { UserSize, UserBobaPreference, UserHobby, UserFavorite } from '@forever-days/core';
-import { User, ShieldAlert, HeartCrack, Plus, Trash2, Camera, Check, Heart, Ruler, CupSoda, Utensils } from 'lucide-react';
+import type { UserSize, UserBobaPreference, UserHobby, UserFavorite, PartnerProfileNote } from '@forever-days/core';
+import { User, ShieldAlert, HeartCrack, Plus, Trash2, Camera, Check, Heart, Ruler, CupSoda, Utensils, Edit3 } from 'lucide-react';
 
 export const ProfileScreen: React.FC = () => {
   const {
@@ -14,7 +15,7 @@ export const ProfileScreen: React.FC = () => {
     signOut
   } = useRelationship();
 
-  const [activeTab, setActiveTab] = useState<'info' | 'sizes' | 'boba' | 'hobbies' | 'breakup'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'sizes' | 'boba' | 'hobbies' | 'partner-notes' | 'breakup' | 'about'>('info');
 
   // Toast notification state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -128,12 +129,23 @@ export const ProfileScreen: React.FC = () => {
   const [partnerVotedBreakup, setPartnerVotedBreakup] = useState(false);
   const [isCastingVote, setIsCastingVote] = useState(false);
 
+  // Partner Profile Notes
+  const [partnerNote, setPartnerNote] = useState<PartnerProfileNote | null>(null);
+  const [receivedNote, setReceivedNote] = useState<PartnerProfileNote | null>(null);
+  const [noteHeight, setNoteHeight] = useState('');
+  const [noteWeight, setNoteWeight] = useState('');
+  const [noteHobbies, setNoteHobbies] = useState('');
+  const [notePersonality, setNotePersonality] = useState('');
+  const [noteIsShared, setNoteIsShared] = useState(false);
+  const [isUpdatingNote, setIsUpdatingNote] = useState(false);
+
   // Services
   const sizeService = new UserSizeService();
   const bobaService = new UserBobaPreferenceService();
   const hobbyService = new UserHobbyService();
   const favService = new UserFavoriteService();
   const coupleService = new CoupleService();
+  const partnerNoteService = new PartnerProfileNoteService();
 
   // Load User Data
   const loadProfileData = async () => {
@@ -184,6 +196,30 @@ export const ProfileScreen: React.FC = () => {
         { id: 'f-p1', userId: 'user-2', category: 'Thức ăn', itemName: 'Sầu riêng', isDislike: true },
         { id: 'f-p2', userId: 'user-2', category: 'Màu sắc', itemName: 'Hồng pastel', isDislike: false }
       ]);
+
+      // Demo notes
+      const demoNoteSaved = localStorage.getItem('demo_partner_note');
+      if (demoNoteSaved) {
+        try {
+          const parsed = JSON.parse(demoNoteSaved);
+          setNoteHeight(parsed.height || '');
+          setNoteWeight(parsed.weight || '');
+          setNoteHobbies(parsed.hobbies || '');
+          setNotePersonality(parsed.personality || '');
+          setNoteIsShared(parsed.isShared ?? false);
+        } catch {}
+      }
+      setReceivedNote({
+        id: 'rec-note',
+        coupleId: 'demo-couple-id',
+        writerId: 'user-2',
+        targetId: 'user-1',
+        height: '1m78',
+        weight: '70kg',
+        hobbies: 'Thích bóng đá, xem phim viễn tưởng',
+        personality: 'Chu đáo, hiền lành, đôi lúc hơi trầm tính',
+        isShared: true
+      });
       return;
     }
 
@@ -238,6 +274,33 @@ export const ProfileScreen: React.FC = () => {
         const isUser1 = activeCouple.user1Id === user.id;
         setVotedBreakup(isUser1 ? activeCouple.user1VotedBreakup : activeCouple.user2VotedBreakup);
         setPartnerVotedBreakup(isUser1 ? activeCouple.user2VotedBreakup : activeCouple.user1VotedBreakup);
+      }
+    }
+
+    // Load Partner Notes
+    if (user && partner) {
+      const myNote = await partnerNoteService.fetchNote(user.id, partner.id);
+      if (myNote) {
+        setPartnerNote(myNote);
+        setNoteHeight(myNote.height || '');
+        setNoteWeight(myNote.weight || '');
+        setNoteHobbies(myNote.hobbies || '');
+        setNotePersonality(myNote.personality || '');
+        setNoteIsShared(myNote.isShared);
+      } else {
+        setPartnerNote(null);
+        setNoteHeight('');
+        setNoteWeight('');
+        setNoteHobbies('');
+        setNotePersonality('');
+        setNoteIsShared(false);
+      }
+
+      const received = await partnerNoteService.fetchNote(partner.id, user.id);
+      if (received && received.isShared) {
+        setReceivedNote(received);
+      } else {
+        setReceivedNote(null);
       }
     }
   };
@@ -354,6 +417,62 @@ export const ProfileScreen: React.FC = () => {
     }
   };
 
+  // Partner Notes Action
+  const handleSavePartnerNote = async () => {
+    setIsUpdatingNote(true);
+    const noteData = {
+      coupleId: coupleId || 'demo-couple-id',
+      writerId: user?.id || 'user-1',
+      targetId: partner?.id || 'user-2',
+      height: noteHeight,
+      weight: noteWeight,
+      hobbies: noteHobbies,
+      personality: notePersonality,
+      isShared: noteIsShared,
+    };
+
+    try {
+      if (isDemoMode) {
+        localStorage.setItem('demo_partner_note', JSON.stringify(noteData));
+      } else {
+        await partnerNoteService.upsertNote(noteData);
+      }
+      showToast('Cập nhật ghi chú đối phương thành công! 📝');
+    } catch (e: any) {
+      showToast(`Lỗi: ${e.message}`);
+    } finally {
+      setIsUpdatingNote(false);
+    }
+  };
+
+  const sendPushNotification = async (expoPushToken: string, title: string, body: string) => {
+    if (expoPushToken.startsWith('mock-')) {
+      console.log('Gửi thông báo giả lập (Expo Go) thành công:', { title, body });
+      return;
+    }
+    const message = {
+      to: expoPushToken,
+      sound: 'default',
+      title: title,
+      body: body,
+      data: { screen: 'Profile' },
+    };
+
+    try {
+      await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Accept-encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(message),
+      });
+    } catch (error) {
+      console.error('Lỗi gửi thông báo:', error);
+    }
+  };
+
   // Breakup Actions
   const handleVoteBreakup = async () => {
     if (isDemoMode) {
@@ -372,6 +491,23 @@ export const ProfileScreen: React.FC = () => {
 
       await coupleService.updateVotedBreakup(coupleId, key, nextVoteValue);
       setVotedBreakup(nextVoteValue);
+
+      // Trigger push notification to partner
+      if (partner?.id) {
+        try {
+          const tokenService = new UserPushTokenService();
+          const partnerToken = await tokenService.fetchPushToken(partner.id);
+          if (partnerToken) {
+            const title = nextVoteValue ? 'Quyết định quan trọng! 💔' : 'Rút lại quyết định! ❤️';
+            const body = nextVoteValue
+              ? `${user?.nickname || 'Người ấy'} đã biểu quyết giải tán mối quan hệ.`
+              : `${user?.nickname || 'Người ấy'} đã rút lại biểu quyết giải tán mối quan hệ.`;
+            await sendPushNotification(partnerToken, title, body);
+          }
+        } catch (err) {
+          console.log('Lỗi gửi push notification giải tán:', err);
+        }
+      }
 
       // Reload to see if relationship broke completely
       setTimeout(() => {
@@ -402,16 +538,16 @@ export const ProfileScreen: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b-[2.2px] border-border-color bg-bg-card p-[6px_6px_0]">
-        {(['info', 'sizes', 'boba', 'hobbies', 'breakup'] as const).map(tab => (
+      <div className="flex border-b-[2.2px] border-border-color bg-bg-card p-[6px_6px_0] overflow-x-auto whitespace-nowrap">
+        {(['info', 'sizes', 'boba', 'hobbies', 'partner-notes', 'breakup', 'about'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`flex-1 bg-transparent border-0 font-extrabold text-[11px] py-3 px-1 cursor-pointer uppercase border-b-3 ${
+            className={`flex-1 bg-transparent border-0 font-extrabold text-[11px] py-3 px-3 cursor-pointer uppercase border-b-3 ${
               activeTab === tab ? 'text-primary-coral border-primary-coral' : 'text-text-secondary border-transparent'
             }`}
           >
-            {tab === 'info' ? 'Chi tiết' : tab === 'sizes' ? 'Kích cỡ' : tab === 'boba' ? 'Gu Boba' : tab === 'hobbies' ? 'Sở thích' : 'Giải tán'}
+            {tab === 'info' ? 'Chi tiết' : tab === 'sizes' ? 'Kích cỡ' : tab === 'boba' ? 'Gu Boba' : tab === 'hobbies' ? 'Sở thích' : tab === 'partner-notes' ? 'Ghi chú đối phương' : tab === 'breakup' ? 'Giải tán' : 'Giới thiệu'}
           </button>
         ))}
       </div>
@@ -784,19 +920,135 @@ export const ProfileScreen: React.FC = () => {
           {/* Display Partner Hobbies */}
           {partner && partnerHobbies.length > 0 && (
             <div className="bg-bg-card border-[2.2px] border-border-color rounded-2xl p-5 shadow-neo transition-all duration-200">
-                <h4 className="text-[15px] font-extrabold mb-4 text-secondary-mint">
-                  Sở thích của {partner.nickname}
-                </h4>
-                <div className="flex flex-col gap-2.5">
-                  {partnerHobbies.map(h => (
-                    <div key={h.id} className="py-2.5 px-3.5 bg-bg-primary border-1.5 border-border-color rounded-xl">
-                      <div className="font-extrabold text-[13px]">{h.hobbyName}</div>
-                      {h.description && <div className="text-[11px] text-text-secondary">{h.description}</div>}
-                    </div>
-                  ))}
+              <h4 className="text-[15px] font-extrabold mb-4 text-secondary-mint">
+                Sở thích của {partner.nickname}
+              </h4>
+              <div className="flex flex-col gap-2.5">
+                {partnerHobbies.map(h => (
+                  <div key={h.id} className="py-2.5 px-3.5 bg-bg-primary border-1.5 border-border-color rounded-xl">
+                    <div className="font-extrabold text-[13px]">{h.hobbyName}</div>
+                    {h.description && <div className="text-[11px] text-text-secondary">{h.description}</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+        {/* Tab 5: Ghi chú đối phương / Partner Notes */}
+        {activeTab === 'partner-notes' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+            {/* Form to edit notes about partner */}
+            <div className="bg-bg-card border-[2.2px] border-border-color rounded-2xl p-5 mb-4 shadow-neo transition-all duration-200">
+              <h4 className="text-[15px] font-extrabold mb-4 flex items-center gap-1.5">
+                <Edit3 size={18} className="text-primary-coral" /> Ghi chú của bạn về {partner?.nickname || 'đối phương'} {partnerNote ? '✏️' : '➕'}
+              </h4>
+              
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div>
+                  <label className="block font-extrabold text-xs text-text-secondary mb-1.5 uppercase tracking-wider">Chiều cao</label>
+                  <input
+                    type="text"
+                    value={noteHeight}
+                    onChange={e => setNoteHeight(e.target.value)}
+                    className="bg-bg-primary border-[2.2px] border-border-color rounded-xl px-4 py-3 text-text-primary font-bold text-[15px] w-full outline-none shadow-[inset_2px_2px_5px_rgba(0,0,0,0.3)] focus:border-primary-coral"
+                    placeholder="VD: 1m65, 1m75..."
+                  />
+                </div>
+                <div>
+                  <label className="block font-extrabold text-xs text-text-secondary mb-1.5 uppercase tracking-wider">Cân nặng</label>
+                  <input
+                    type="text"
+                    value={noteWeight}
+                    onChange={e => setNoteWeight(e.target.value)}
+                    className="bg-bg-primary border-[2.2px] border-border-color rounded-xl px-4 py-3 text-text-primary font-bold text-[15px] w-full outline-none shadow-[inset_2px_2px_5px_rgba(0,0,0,0.3)] focus:border-primary-coral"
+                    placeholder="VD: 50kg, 65kg..."
+                  />
                 </div>
               </div>
-            )}
+              
+              <div className="mb-3">
+                <label className="block font-extrabold text-xs text-text-secondary mb-1.5 uppercase tracking-wider">Sở thích đặc biệt</label>
+                <textarea
+                  value={noteHobbies}
+                  onChange={e => setNoteHobbies(e.target.value)}
+                  className="bg-bg-primary border-[2.2px] border-border-color rounded-xl px-4 py-3 text-text-primary font-bold text-[15px] w-full outline-none shadow-[inset_2px_2px_5px_rgba(0,0,0,0.3)] focus:border-primary-coral h-[70px] resize-none"
+                  placeholder="Thích ăn gì, làm gì lúc rảnh rỗi..."
+                />
+              </div>
+
+              <div className="mb-4">
+                <label className="block font-extrabold text-xs text-text-secondary mb-1.5 uppercase tracking-wider">Tính cách</label>
+                <textarea
+                  value={notePersonality}
+                  onChange={e => setNotePersonality(e.target.value)}
+                  className="bg-bg-primary border-[2.2px] border-border-color rounded-xl px-4 py-3 text-text-primary font-bold text-[15px] w-full outline-none shadow-[inset_2px_2px_5px_rgba(0,0,0,0.3)] focus:border-primary-coral h-[70px] resize-none"
+                  placeholder="VD: Dễ thương, hay dỗi, hiền lành..."
+                />
+              </div>
+
+              <div className="flex items-center gap-2 mb-5 pl-1">
+                <input
+                  type="checkbox"
+                  id="note-share-check"
+                  checked={noteIsShared}
+                  onChange={e => setNoteIsShared(e.target.checked)}
+                  className="w-4 h-4 cursor-pointer"
+                />
+                <label htmlFor="note-share-check" className="text-[13px] font-extrabold cursor-pointer">
+                  Chia sẻ ghi chú này để đối phương cùng đọc 🔓
+                </label>
+              </div>
+
+              <button
+                onClick={handleSavePartnerNote}
+                disabled={isUpdatingNote}
+                className="w-full bg-primary-coral text-border-color font-extrabold text-[15px] border-[2.2px] border-border-color rounded-xl px-5 py-2.5 cursor-pointer shadow-neo inline-flex items-center justify-center gap-2 transition-all duration-100 hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-neo-hover active:translate-x-[3px] active:translate-y-[3px] active:shadow-none select-none"
+              >
+                {isUpdatingNote ? 'Đang lưu...' : 'Lưu ghi chú'}
+              </button>
+            </div>
+
+            {/* Read-only notes written by partner about user */}
+            <div className="bg-bg-card border-[2.2px] border-border-color rounded-2xl p-5 mb-4 shadow-neo transition-all duration-200">
+              <h4 className="text-[15px] font-extrabold mb-4 text-secondary-mint flex items-center gap-1.5">
+                <Heart size={18} fill="currentColor" /> {partner?.nickname || 'Đối phương'} ghi chú về bạn
+              </h4>
+
+              {receivedNote ? (
+                <div className="flex flex-col gap-3.5 text-[13px]">
+                  <div className="bg-secondary-mint/10 border-[1.5px] border-secondary-mint/30 rounded-xl px-3 py-2 text-center text-secondary-mint font-extrabold text-xs">
+                    🔓 Được đối phương chia sẻ
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="block font-extrabold text-[10px] text-text-secondary mb-1.5 uppercase tracking-wider">Chiều cao</span>
+                      <div className="font-bold">{receivedNote.height || 'Chưa rõ'}</div>
+                    </div>
+                    <div>
+                      <span className="block font-extrabold text-[10px] text-text-secondary mb-1.5 uppercase tracking-wider">Cân nặng</span>
+                      <div className="font-bold">{receivedNote.weight || 'Chưa rõ'}</div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="block font-extrabold text-[10px] text-text-secondary mb-1.5 uppercase tracking-wider">Sở thích</span>
+                    <div className="font-bold whitespace-pre-wrap">{receivedNote.hobbies || 'Chưa ghi chú'}</div>
+                  </div>
+
+                  <div>
+                    <span className="block font-extrabold text-[10px] text-text-secondary mb-1.5 uppercase tracking-wider">Tính cách</span>
+                    <div className="font-bold whitespace-pre-wrap">{receivedNote.personality || 'Chưa ghi chú'}</div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-10 text-text-secondary text-sm font-bold">
+                  🔐 Đối phương chưa chia sẻ hoặc chưa tạo ghi chú nào về bạn.
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -849,6 +1101,35 @@ export const ProfileScreen: React.FC = () => {
                 <HeartCrack size={18} />
                 {votedBreakup ? 'Hủy biểu quyết chia tay' : 'Bỏ phiếu chia tay'}
               </button>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'about' && (
+          <div className="flex flex-col gap-4">
+            <div className="bg-bg-card border-[2.2px] border-border-color rounded-2xl p-6 shadow-neo text-center flex flex-col items-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-primary-coral/15 border-[1.8px] border-border-color flex items-center justify-center text-primary-coral shadow-sm mx-auto">
+                <Heart size={30} fill="currentColor" />
+              </div>
+              <h3 className="text-lg font-black text-text-primary">ForeverDays</h3>
+              <p className="text-xs text-text-secondary font-bold -mt-2">Phiên bản 1.0.0</p>
+              <div className="w-full border-t-2 border-dashed border-border-color/20 my-2" />
+              
+              <div className="flex flex-col gap-1.5">
+                <span className="block text-xs font-extrabold text-text-secondary uppercase tracking-wider">Hợp tác & Feedback</span>
+                <a href="mailto:devprojectlabvn@gmail.com" className="text-[14px] font-black text-primary-coral hover:underline">
+                  devprojectlabvn@gmail.com
+                </a>
+              </div>
+
+              <div className="w-full border-t-2 border-dashed border-border-color/20 my-2" />
+
+              <div className="text-xs text-text-secondary font-bold flex flex-col gap-1">
+                <span>© 2026 Góc Vũ Trụ</span>
+                <span>
+                  Crafted with ❤️ by <strong className="text-text-primary">Family Love Studio</strong>
+                </span>
+              </div>
             </div>
           </div>
         )}

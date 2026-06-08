@@ -14,4 +14,11 @@ export declare const DatabaseConstants: {
     readonly widgetSettings: "widget_settings";
     readonly loveDiaries: "love_diaries";
     readonly diaryMedia: "diary_media";
+    readonly partnerProfileNotes: "partner_profile_notes";
+    readonly coupleEvents: "couple_events";
+    readonly userMoodLogs: "user_mood_logs";
+    readonly coupleCountdownCustomizations: "couple_countdown_customizations";
+    readonly userPushTokens: "user_push_tokens";
+    readonly milestonePlans: "milestone_plans";
+    readonly dailyWishes: "daily_wishes";
 };

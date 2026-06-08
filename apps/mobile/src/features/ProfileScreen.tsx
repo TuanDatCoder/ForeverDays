@@ -17,9 +17,11 @@ import {
   UserBobaPreferenceService,
   UserHobbyService,
   UserFavoriteService,
-  CoupleService
+  CoupleService,
+  PartnerProfileNoteService,
+  UserPushTokenService
 } from '@forever-days/core';
-import type { UserSize, UserBobaPreference, UserHobby, UserFavorite } from '@forever-days/core';
+import type { UserSize, UserBobaPreference, UserHobby, UserFavorite, PartnerProfileNote } from '@forever-days/core';
 
 export const ProfileScreen: React.FC = () => {
   const {
@@ -31,7 +33,19 @@ export const ProfileScreen: React.FC = () => {
     signOut
   } = useRelationship();
 
-  const [activeTab, setActiveTab] = useState<'info' | 'sizes' | 'boba' | 'hobbies' | 'breakup'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'sizes' | 'boba' | 'hobbies' | 'notes' | 'breakup' | 'about'>('info');
+
+  // Partner Notes State
+  const [partnerNote, setPartnerNote] = useState<PartnerProfileNote | null>(null);
+  const [myNoteAboutPartner, setMyNoteAboutPartner] = useState<PartnerProfileNote | null>(null);
+  const [noteHeight, setNoteHeight] = useState('');
+  const [noteWeight, setNoteWeight] = useState('');
+  const [noteHobbies, setNoteHobbies] = useState('');
+  const [notePersonality, setNotePersonality] = useState('');
+  const [noteIsShared, setNoteIsShared] = useState(false);
+  const [isSavingNote, setIsSavingNote] = useState(false);
+
+  const noteService = new PartnerProfileNoteService();
 
   // Personal Info Inputs (Own)
   const [nickname, setNickname] = useState('');
@@ -170,6 +184,38 @@ export const ProfileScreen: React.FC = () => {
         { id: 'f-p1', userId: 'user-2', category: 'Thức ăn', itemName: 'Sầu riêng', isDislike: true },
         { id: 'f-p2', userId: 'user-2', category: 'Màu sắc', itemName: 'Hồng pastel', isDislike: false }
       ]);
+
+      // Load partner notes (demo mode)
+      const demoMyNote = demoStorage['demo_partner_note_my'];
+      if (demoMyNote) {
+        try {
+          const parsed = JSON.parse(demoMyNote);
+          setMyNoteAboutPartner(parsed);
+          setNoteHeight(parsed.height || '');
+          setNoteWeight(parsed.weight || '');
+          setNoteHobbies(parsed.hobbies || '');
+          setNotePersonality(parsed.personality || '');
+          setNoteIsShared(parsed.isShared || false);
+        } catch {}
+      } else {
+        setNoteHeight('1m62');
+        setNoteWeight('48kg');
+        setNoteHobbies('Thích đi cà phê chụp ảnh');
+        setNotePersonality('Dễ thương, thỉnh thoảng hay dỗi');
+        setNoteIsShared(true);
+      }
+      setPartnerNote({
+        id: 'p-note',
+        coupleId: 'demo-couple-id',
+        writerId: 'user-2',
+        targetId: 'user-1',
+        height: '1m78',
+        weight: '68kg',
+        hobbies: 'Đá bóng, chơi game PC',
+        personality: 'Hiền lành, kiên nhẫn',
+        isShared: true
+      });
+
       return;
     }
 
@@ -223,11 +269,60 @@ export const ProfileScreen: React.FC = () => {
         setPartnerVotedBreakup(isUser1 ? activeCouple.user2VotedBreakup : activeCouple.user1VotedBreakup);
       }
     }
+
+    // Load Partner Notes
+    try {
+      if (partner) {
+        const myNote = await noteService.fetchNote(user.id, partner.id);
+        if (myNote) {
+          setMyNoteAboutPartner(myNote);
+          setNoteHeight(myNote.height || '');
+          setNoteWeight(myNote.weight || '');
+          setNoteHobbies(myNote.hobbies || '');
+          setNotePersonality(myNote.personality || '');
+          setNoteIsShared(myNote.isShared || false);
+        }
+        const pNote = await noteService.fetchNote(partner.id, user.id);
+        if (pNote && pNote.isShared) {
+          setPartnerNote(pNote);
+        }
+      }
+    } catch {}
   };
 
   useEffect(() => {
     loadProfileData();
   }, [user, partner, coupleId, isDemoMode]);
+
+  // Partner Notes Action
+  const handleSaveNote = async () => {
+    setIsSavingNote(true);
+    const noteData = {
+      coupleId: coupleId || 'demo-couple-id',
+      writerId: user?.id || 'user-1',
+      targetId: partner?.id || 'user-2',
+      height: noteHeight.trim(),
+      weight: noteWeight.trim(),
+      hobbies: noteHobbies.trim(),
+      personality: notePersonality.trim(),
+      isShared: noteIsShared,
+    };
+
+    try {
+      if (isDemoMode) {
+        demoStorage['demo_partner_note_my'] = JSON.stringify(noteData);
+        setMyNoteAboutPartner(noteData as any);
+        Alert.alert('Thành công', 'Đã lưu ghi chú đối phương (Demo mode)');
+      } else {
+        await noteService.upsertNote(noteData);
+        Alert.alert('Thành công', 'Đã lưu ghi chú đối phương');
+        await loadProfileData();
+      }
+    } catch {
+      Alert.alert('Thất bại', 'Không thể lưu ghi chú.');
+    }
+    setIsSavingNote(false);
+  };
 
   // Info Actions
   const handleSaveInfo = async () => {
@@ -337,6 +432,34 @@ export const ProfileScreen: React.FC = () => {
     }
   };
 
+  const sendPushNotification = async (expoPushToken: string, title: string, body: string) => {
+    if (expoPushToken.startsWith('mock-')) {
+      console.log('Gửi thông báo giả lập (Expo Go) thành công:', { title, body });
+      return;
+    }
+    const message = {
+      to: expoPushToken,
+      sound: 'default',
+      title: title,
+      body: body,
+      data: { screen: 'Profile' },
+    };
+
+    try {
+      await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Accept-encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(message),
+      });
+    } catch (error) {
+      console.error('Lỗi gửi thông báo:', error);
+    }
+  };
+
   // Breakup Actions
   const handleVoteBreakup = async () => {
     if (isDemoMode) {
@@ -356,6 +479,23 @@ export const ProfileScreen: React.FC = () => {
 
       await coupleService.updateVotedBreakup(coupleId, key, nextVoteValue);
       setVotedBreakup(nextVoteValue);
+
+      // Trigger push notification to partner
+      if (partner?.id) {
+        try {
+          const tokenService = new UserPushTokenService();
+          const partnerToken = await tokenService.fetchPushToken(partner.id);
+          if (partnerToken) {
+            const title = nextVoteValue ? 'Quyết định quan trọng! 💔' : 'Rút lại quyết định! ❤️';
+            const body = nextVoteValue
+              ? `${user?.nickname || 'Người ấy'} đã biểu quyết giải tán mối quan hệ.`
+              : `${user?.nickname || 'Người ấy'} đã rút lại biểu quyết giải tán mối quan hệ.`;
+            await sendPushNotification(partnerToken, title, body);
+          }
+        } catch (err) {
+          console.log('Lỗi gửi push notification giải tán:', err);
+        }
+      }
 
       Alert.alert(
         'Đã ghi nhận biểu quyết',
@@ -388,7 +528,7 @@ export const ProfileScreen: React.FC = () => {
       {/* Tabs */}
       <View style={styles.tabsWrapper}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsScrollContent}>
-          {(['info', 'sizes', 'boba', 'hobbies', 'breakup'] as const).map(tab => (
+          {(['info', 'sizes', 'boba', 'hobbies', 'notes', 'breakup', 'about'] as const).map(tab => (
             <TouchableOpacity
               key={tab}
               onPress={() => setActiveTab(tab)}
@@ -411,7 +551,11 @@ export const ProfileScreen: React.FC = () => {
                   ? 'Gu Boba'
                   : tab === 'hobbies'
                   ? 'Sở thích'
-                  : 'Giải tán'}
+                  : tab === 'notes'
+                  ? 'Ghi chú'
+                  : tab === 'breakup'
+                  ? 'Giải tán'
+                  : 'Giới thiệu'}
               </Text>
             </TouchableOpacity>
           ))}
@@ -1040,6 +1184,120 @@ export const ProfileScreen: React.FC = () => {
           </View>
         )}
 
+        {/* Tab Notes: Ghi chú đối phương */}
+        {activeTab === 'notes' && (
+          <View style={styles.tabContent}>
+            {/* Note written by partner about me */}
+            <View style={styles.card}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 16 }}>
+                <Heart size={18} color={AppTheme.colorSecondary} fill={AppTheme.colorSecondary} />
+                <Text style={[styles.cardTitle, { color: AppTheme.colorSecondary, marginBottom: 0 }]}>Đối phương ghi chú về bạn</Text>
+              </View>
+
+              {partnerNote && partnerNote.isShared ? (
+                <View style={styles.partnerBobaDetails}>
+                  <View style={{ marginBottom: 8 }}>
+                    <Text style={styles.label}>Chiều cao & Cân nặng</Text>
+                    <Text style={styles.bobaDetailVal}>
+                      {partnerNote.height ? `Cao: ${partnerNote.height}` : 'Chưa có'} • {partnerNote.weight ? `Nặng: ${partnerNote.weight}` : 'Chưa có'}
+                    </Text>
+                  </View>
+
+                  <View style={{ marginBottom: 8 }}>
+                    <Text style={styles.label}>Sở thích của bạn (đối phương note)</Text>
+                    <Text style={styles.bobaNoteVal}>{partnerNote.hobbies || 'Chưa ghi chú'}</Text>
+                  </View>
+
+                  <View>
+                    <Text style={styles.label}>Tính cách của bạn (đối phương note)</Text>
+                    <Text style={styles.bobaNoteVal}>{partnerNote.personality || 'Chưa ghi chú'}</Text>
+                  </View>
+                </View>
+              ) : (
+                <Text style={styles.emptyText}>
+                  {partner ? `${partner.nickname} chưa ghi chú hoặc chưa bật chia sẻ ghi chú với bạn.` : 'Chưa kết nối đối phương.'}
+                </Text>
+              )}
+            </View>
+
+            {/* Note written by me about partner */}
+            <View style={styles.card}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 16 }}>
+                <Heart size={18} color={AppTheme.colorPrimary} fill={AppTheme.colorPrimary} />
+                <Text style={[styles.cardTitle, { color: AppTheme.colorPrimary, marginBottom: 0 }]}>Ghi chú của bạn về đối phương</Text>
+              </View>
+
+              <View style={styles.row}>
+                <View style={[styles.formGroup, { flex: 1 }]}>
+                  <Text style={styles.label}>Chiều cao</Text>
+                  <TextInput
+                    value={noteHeight}
+                    onChangeText={setNoteHeight}
+                    placeholder="Ví dụ: 1m75"
+                    placeholderTextColor="#666"
+                    style={styles.input}
+                  />
+                </View>
+                <View style={[styles.formGroup, { flex: 1, marginLeft: 12 }]}>
+                  <Text style={styles.label}>Cân nặng</Text>
+                  <TextInput
+                    value={noteWeight}
+                    onChangeText={setNoteWeight}
+                    placeholder="Ví dụ: 65kg"
+                    placeholderTextColor="#666"
+                    style={styles.input}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Sở thích của đối phương</Text>
+                <TextInput
+                  value={noteHobbies}
+                  onChangeText={setNoteHobbies}
+                  placeholder="Ghi chú sở thích của nửa kia..."
+                  placeholderTextColor="#666"
+                  multiline
+                  style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Tính cách của đối phương</Text>
+                <TextInput
+                  value={notePersonality}
+                  onChangeText={setNotePersonality}
+                  placeholder="Ghi chú tính cách, đặc điểm của nửa kia..."
+                  placeholderTextColor="#666"
+                  multiline
+                  style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+                />
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setNoteIsShared(!noteIsShared)}
+                activeOpacity={0.8}
+                style={styles.dislikeToggleRow}
+              >
+                <View style={[styles.checkbox, noteIsShared && styles.checkboxChecked]}>
+                  {noteIsShared && <Text style={styles.checkboxTick}>✓</Text>}
+                </View>
+                <Text style={styles.dislikeToggleLabel}>Chia sẻ ghi chú này cho đối phương thấy</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleSaveNote}
+                disabled={isSavingNote}
+                style={styles.saveBtn}
+              >
+                <Text style={styles.saveBtnText}>
+                  {isSavingNote ? 'Đang lưu...' : 'Lưu ghi chú'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         {/* Tab 5: Breakup */}
         {activeTab === 'breakup' && (
           <View style={styles.tabContent}>
@@ -1081,6 +1339,69 @@ export const ProfileScreen: React.FC = () => {
                   {votedBreakup ? 'Hủy biểu quyết chia tay' : 'Bỏ phiếu chia tay'}
                 </Text>
               </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* Tab 6: About */}
+        {activeTab === 'about' && (
+          <View style={styles.tabContent}>
+            <View style={[styles.card, { alignItems: 'center', paddingVertical: 30 }]}>
+              <View style={{
+                width: 64,
+                height: 64,
+                borderRadius: 32,
+                backgroundColor: 'rgba(255, 101, 132, 0.1)',
+                borderWidth: AppTheme.borderWidth,
+                borderColor: AppTheme.borderColor,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 16,
+              }}>
+                <Heart size={32} color={AppTheme.colorPrimary} fill={AppTheme.colorPrimary} />
+              </View>
+              
+              <Text style={{ fontSize: 20, fontWeight: '900', color: AppTheme.textPrimary }}>ForeverDays</Text>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: AppTheme.textSecondary, marginTop: 4 }}>Phiên bản 1.0.0</Text>
+              
+              <View style={{
+                width: '100%',
+                borderTopWidth: 2,
+                borderColor: AppTheme.borderColor,
+                borderStyle: 'dashed',
+                marginVertical: 20,
+              }} />
+              
+              <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                <Text style={{
+                  fontSize: 11,
+                  fontWeight: '800',
+                  color: AppTheme.textSecondary,
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                  marginBottom: 6,
+                }}>Hợp tác & Feedback</Text>
+                <Text style={{
+                  fontSize: 15,
+                  fontWeight: '900',
+                  color: AppTheme.colorPrimary,
+                }}>devprojectlabvn@gmail.com</Text>
+              </View>
+
+              <View style={{
+                width: '100%',
+                borderTopWidth: 2,
+                borderColor: AppTheme.borderColor,
+                borderStyle: 'dashed',
+                marginVertical: 10,
+              }} />
+
+              <View style={{ alignItems: 'center', marginTop: 10 }}>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: AppTheme.textSecondary, marginBottom: 4 }}>© 2026 Góc Vũ Trụ</Text>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: AppTheme.textSecondary }}>
+                  Crafted with ❤️ by <Text style={{ color: AppTheme.textPrimary, fontWeight: '900' }}>Family Love Studio</Text>
+                </Text>
+              </View>
             </View>
           </View>
         )}

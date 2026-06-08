@@ -263,3 +263,142 @@ export function mapWidgetSettingToDb(setting) {
         text_size: setting.textSize,
     };
 }
+export function mapPartnerProfileNoteFromDb(row) {
+    return {
+        id: row.id,
+        coupleId: row.couple_id,
+        writerId: row.writer_id,
+        targetId: row.target_id,
+        height: row.height,
+        weight: row.weight,
+        hobbies: row.hobbies,
+        personality: row.personality,
+        isShared: row.is_shared ?? false,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+    };
+}
+export function mapPartnerProfileNoteToDb(note) {
+    return {
+        id: note.id,
+        couple_id: note.coupleId,
+        writer_id: note.writerId,
+        target_id: note.targetId,
+        height: note.height,
+        weight: note.weight,
+        hobbies: note.hobbies,
+        personality: note.personality,
+        is_shared: note.isShared,
+    };
+}
+export function mapCoupleEventFromDb(row) {
+    return {
+        id: row.id,
+        coupleId: row.couple_id,
+        createdBy: row.created_by,
+        title: row.title,
+        eventDate: row.event_date,
+        eventTime: row.event_time,
+        location: row.location,
+        description: row.description,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+    };
+}
+export function mapCoupleEventToDb(event) {
+    return {
+        id: event.id,
+        couple_id: event.coupleId,
+        created_by: event.createdBy,
+        title: event.title,
+        event_date: event.eventDate,
+        event_time: event.eventTime,
+        location: event.location,
+        description: event.description,
+    };
+}
+export function mapUserMoodLogFromDb(row) {
+    return {
+        id: row.id,
+        userId: row.user_id,
+        coupleId: row.couple_id,
+        moodType: row.mood_type,
+        note: row.note,
+        isShared: row.is_shared ?? false,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+    };
+}
+export function mapUserMoodLogToDb(log) {
+    return {
+        id: log.id,
+        user_id: log.userId,
+        couple_id: log.coupleId,
+        mood_type: log.moodType,
+        note: log.note,
+        is_shared: log.isShared,
+    };
+}
+export function mapCoupleCountdownCustomizationFromDb(row) {
+    return {
+        id: row.id,
+        coupleId: row.couple_id,
+        customAvatar1Url: row.custom_avatar_1_url,
+        customAvatar2Url: row.custom_avatar_2_url,
+        backgroundUrl: row.background_url,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+    };
+}
+export function mapCoupleCountdownCustomizationToDb(customization) {
+    return {
+        id: customization.id,
+        couple_id: customization.coupleId,
+        custom_avatar_1_url: customization.customAvatar1Url === undefined ? null : customization.customAvatar1Url,
+        custom_avatar_2_url: customization.customAvatar2Url === undefined ? null : customization.customAvatar2Url,
+        background_url: customization.backgroundUrl === undefined ? null : customization.backgroundUrl,
+    };
+}
+export function mapMilestonePlanFromDb(row) {
+    return {
+        id: row.id,
+        coupleId: row.couple_id,
+        milestoneId: row.milestone_id,
+        milestoneTitle: row.milestone_title,
+        category: row.category,
+        content: row.content,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+    };
+}
+export function mapMilestonePlanToDb(plan) {
+    return {
+        id: plan.id,
+        couple_id: plan.coupleId,
+        milestone_id: plan.milestoneId,
+        milestone_title: plan.milestoneTitle,
+        category: plan.category,
+        content: plan.content,
+    };
+}
+export function mapDailyWishFromDb(row) {
+    return {
+        id: row.id,
+        content: row.content,
+        type: row.type || 'daily',
+        specialMonth: row.special_month,
+        specialDay: row.special_day,
+        specialEvent: row.special_event,
+        createdAt: row.created_at,
+    };
+}
+export function mapDailyWishToDb(wish) {
+    return {
+        id: wish.id,
+        content: wish.content,
+        type: wish.type,
+        special_month: wish.specialMonth,
+        special_day: wish.specialDay,
+        special_event: wish.specialEvent,
+    };
+}

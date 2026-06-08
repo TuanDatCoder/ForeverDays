@@ -14,4 +14,11 @@ export const DatabaseConstants = {
     widgetSettings: 'widget_settings',
     loveDiaries: 'love_diaries',
     diaryMedia: 'diary_media',
+    partnerProfileNotes: 'partner_profile_notes',
+    coupleEvents: 'couple_events',
+    userMoodLogs: 'user_mood_logs',
+    coupleCountdownCustomizations: 'couple_countdown_customizations',
+    userPushTokens: 'user_push_tokens',
+    milestonePlans: 'milestone_plans',
+    dailyWishes: 'daily_wishes',
 };

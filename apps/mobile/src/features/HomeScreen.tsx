@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Share, Platform } from 'react-native';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Share, Platform, ImageBackground, Alert } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useRelationship } from '../core/RelationshipContext';
+import { useRelationship, demoStorage } from '../core/RelationshipContext';
 import { HeartbeatConnector } from '../components/HeartbeatConnector';
-import { UserStatusService, MilestoneService, supabase } from '@forever-days/core';
-import { Calendar, Edit3, Heart, RotateCw, Clock, Cake } from 'lucide-react-native';
+import { UserStatusService, MilestoneService, UserMoodLogService, CoupleCountdownCustomizationService, UserPushTokenService, MilestonePlanService, DailyWishService, MOCK_DAILY_WISHES, supabase } from '@forever-days/core';
+import type { UserMoodLog, CoupleCountdownCustomization, MilestonePlan, DailyWish } from '@forever-days/core';
+import { Calendar, Edit3, Heart, RotateCw, Clock, Cake, Trash2 } from 'lucide-react-native';
 import ConfettiCannon from 'react-native-confetti-cannon';
+import * as ImagePicker from 'expo-image-picker';
 
 export const HomeScreen: React.FC = () => {
   const {
@@ -25,6 +27,8 @@ export const HomeScreen: React.FC = () => {
   const [partnerStatusText, setPartnerStatusText] = useState('Cảm thấy hạnh phúc');
   const [isLoadingStatuses, setIsLoadingStatuses] = useState(false);
   const [customMilestones, setCustomMilestones] = useState<any[]>([]);
+  const [plans, setPlans] = useState<MilestonePlan[]>([]);
+  const [wishes, setWishes] = useState<DailyWish[]>([]);
 
   // Modal State
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
@@ -34,13 +38,136 @@ export const HomeScreen: React.FC = () => {
   const [anniversaryInput, setAnniversaryInput] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(Platform.OS === 'ios');
 
+  // Mood Log State
+  const [moodLogs, setMoodLogs] = useState<UserMoodLog[]>([]);
+  const [isOpenAddMoodModal, setIsOpenAddMoodModal] = useState(false);
+  const [selectedMoodType, setSelectedMoodType] = useState('😊 Vui vẻ');
+  const [moodNote, setMoodNote] = useState('');
+  const [moodIsShared, setMoodIsShared] = useState(false);
+  const [isAddingMood, setIsAddingMood] = useState(false);
+
+  // Countdown Customization State
+  const [themeCustomization, setThemeCustomization] = useState<CoupleCountdownCustomization | null>(null);
+  const [isOpenThemeModal, setIsOpenThemeModal] = useState(false);
+  const [themeAvatar1, setThemeAvatar1] = useState('');
+  const [themeAvatar2, setThemeAvatar2] = useState('');
+  const [themeBackground, setThemeBackground] = useState('');
+  const [isSavingTheme, setIsSavingTheme] = useState(false);
+  const [isSendingTestNotification, setIsSendingTestNotification] = useState(false);
+
   const statusService = new UserStatusService();
+  const moodLogService = new UserMoodLogService();
+  const customizationService = new CoupleCountdownCustomizationService();
 
   const moodEmojis = [
     '😊', '🥰', '😍', '😘', '🥳', '😎', '😜', '😇',
     '🥺', '😢', '😭', '😡', '🤬', '😱', '😴', '🥱',
     '😷', '🤔', '🙄', '💖', '🍿', '🎮', '☕', '🥤'
   ];
+
+  const sendPushNotification = async (expoPushToken: string, title: string, body: string) => {
+    if (expoPushToken.startsWith('mock-')) {
+      console.log('Gửi thông báo giả lập (Expo Go) thành công:', { title, body });
+      return;
+    }
+    const message = {
+      to: expoPushToken,
+      sound: 'default',
+      title: title,
+      body: body,
+      data: { screen: 'Home' },
+    };
+
+    try {
+      await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Accept-encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(message),
+      });
+    } catch (error) {
+      console.error('Lỗi gửi thông báo:', error);
+    }
+  };
+
+  const handleSendLoveOrPoke = async (type: 'love' | 'poke') => {
+    if (isDemoMode) {
+      Alert.alert('Chế độ Demo', 'Ứng dụng đang ở chế độ Demo! Tính năng thông báo đẩy chỉ hoạt động ở chế độ kết nối cơ sở dữ liệu thật.');
+      return;
+    }
+    if (!partner?.id) {
+      Alert.alert('Chưa kết nối', 'Bạn chưa kết nối với nửa kia! Hãy ghép đôi để sử dụng tính năng này.');
+      return;
+    }
+    setIsSendingTestNotification(true);
+    try {
+      const tokenService = new UserPushTokenService();
+      const partnerToken = await tokenService.fetchPushToken(partner.id);
+      
+      const title = type === 'love' ? 'Tín hiệu yêu thương! 💕' : 'Ai đó đang chọc bạn! 🤪';
+      const body = type === 'love' 
+        ? `${user?.nickname || 'Nửa kia'} đang nhớ bạn rất nhiều! 🥰` 
+        : `${user?.nickname || 'Nửa kia'} vừa chọc ghẹo bạn một cái! 🤪`;
+
+      if (partnerToken) {
+        await sendPushNotification(partnerToken, title, body);
+        if (partnerToken.startsWith('mock-')) {
+          Alert.alert(
+            'Thành công (Giả lập)',
+            'Đã gửi tín hiệu thành công!\n\n(Do đối phương đang dùng Expo Go giả lập nên sự kiện đã được ghi nhận trên hệ thống nhưng không rung chuông vật lý).'
+          );
+        } else {
+          Alert.alert('Thành công', type === 'love' ? 'Đã gửi yêu thương thành công đến đối phương! 💕' : 'Đã chọc ghẹo đối phương thành công! 🤪');
+        }
+      } else {
+        Alert.alert(
+          'Không tìm thấy Token',
+          'Không tìm thấy mã đăng ký thông báo (Push Token) của đối phương!\n\n' +
+          'Lưu ý: Đối phương cần phải đăng nhập vào ứng dụng trên điện thoại ít nhất một lần để đăng ký thiết bị.'
+        );
+      }
+    } catch (err: any) {
+      console.error('Lỗi khi gửi tín hiệu:', err);
+      Alert.alert('Thất bại', 'Đã xảy ra lỗi khi gửi: ' + (err?.message || err));
+    } finally {
+      setIsSendingTestNotification(false);
+    }
+  };
+
+  const pickImage = async (field: 'avatar1' | 'avatar2' | 'background') => {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (permissionResult.granted === false) {
+        Alert.alert('Quyền truy cập', 'Bạn cần cấp quyền truy cập thư viện ảnh để chọn ảnh!');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: field === 'background' ? [4, 3] : [1, 1],
+        quality: 0.7,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets?.[0]?.base64) {
+        const base64Uri = `data:image/jpeg;base64,${result.assets[0].base64}`;
+        if (field === 'avatar1') {
+          setThemeAvatar1(base64Uri);
+        } else if (field === 'avatar2') {
+          setThemeAvatar2(base64Uri);
+        } else {
+          setThemeBackground(base64Uri);
+        }
+      }
+    } catch (error) {
+      console.error('Lỗi chọn ảnh:', error);
+      Alert.alert('Lỗi', 'Không thể chọn hoặc xử lý ảnh!');
+    }
+  };
 
   const loadStatuses = async () => {
     if (isDemoMode) {
@@ -67,23 +194,114 @@ export const HomeScreen: React.FC = () => {
     setIsLoadingStatuses(false);
   };
 
-  useEffect(() => {
-    loadStatuses();
-  }, [user, partner, isDemoMode]);
+  const loadThemeAndMoodLogs = async () => {
+    if (isDemoMode) {
+      // Mood logs
+      const savedMoods = demoStorage['demo_mood_logs'];
+      if (savedMoods) {
+        try {
+          setMoodLogs(JSON.parse(savedMoods));
+        } catch {}
+      } else {
+        const defaultMoods: UserMoodLog[] = [
+          {
+            id: 'm-1',
+            userId: 'user-1',
+            coupleId: 'demo-couple-id',
+            moodType: '😊 Vui vẻ',
+            note: 'Hôm nay hai đứa đi uống trà sữa ngon lắm!',
+            isShared: true,
+            createdAt: new Date().toISOString()
+          }
+        ];
+        setMoodLogs(defaultMoods);
+        demoStorage['demo_mood_logs'] = JSON.stringify(defaultMoods);
+      }
+
+      // Custom theme
+      const savedTheme = demoStorage['demo_custom_theme'];
+      if (savedTheme) {
+        try {
+          const parsed = JSON.parse(savedTheme);
+          setThemeCustomization(parsed);
+          setThemeAvatar1(parsed.customAvatar1Url || '');
+          setThemeAvatar2(parsed.customAvatar2Url || '');
+          setThemeBackground(parsed.backgroundUrl || '');
+        } catch {}
+      }
+      return;
+    }
+
+    if (!user) return;
+    try {
+      // 1. Fetch Mood logs
+      const myLogs = await moodLogService.fetchMyMoodLogs(user.id);
+      let combined = [...myLogs];
+
+      if (partner) {
+        const partnerLogs = await moodLogService.fetchPartnerMoodLogs(partner.id);
+        combined = [...combined, ...partnerLogs];
+      }
+
+      // Sort by created_at descending
+      combined.sort((a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime());
+      setMoodLogs(combined);
+
+      // 2. Fetch Theme customization
+      if (coupleId) {
+        const theme = await customizationService.fetchCustomization(coupleId);
+        if (theme) {
+          setThemeCustomization(theme);
+          setThemeAvatar1(theme.customAvatar1Url || '');
+          setThemeAvatar2(theme.customAvatar2Url || '');
+          setThemeBackground(theme.backgroundUrl || '');
+        } else {
+          setThemeCustomization(null);
+          setThemeAvatar1('');
+          setThemeAvatar2('');
+          setThemeBackground('');
+        }
+      }
+    } catch {}
+  };
 
   useEffect(() => {
-    const fetchCustom = async () => {
+    loadStatuses();
+    loadThemeAndMoodLogs();
+  }, [user, partner, coupleId, isDemoMode]);
+
+  useEffect(() => {
+    const fetchCustomAndPlansAndWishes = async () => {
       if (isDemoMode) {
+        const saved = demoStorage['custom_milestones'];
+        if (saved) {
+          try {
+            setCustomMilestones(JSON.parse(saved));
+          } catch {}
+        }
+        const savedPlans = demoStorage['demo_milestone_plans'];
+        if (savedPlans) {
+          try {
+            setPlans(JSON.parse(savedPlans));
+          } catch {}
+        }
+        setWishes(MOCK_DAILY_WISHES);
         return;
       }
       if (!user || !coupleId) return;
       const milestoneService = new MilestoneService();
+      const planService = new MilestonePlanService();
+      const wishService = new DailyWishService();
       try {
         const list = await milestoneService.fetchMilestones(coupleId);
         setCustomMilestones(list);
+        const planList = await planService.fetchPlans(coupleId);
+        setPlans(planList);
+        const wishList = await wishService.fetchAllWishes();
+        setWishes(wishList);
       } catch {}
     };
-    fetchCustom();
+    fetchCustomAndPlansAndWishes();
   }, [user, coupleId, isDemoMode]);
 
   useEffect(() => {
@@ -152,6 +370,23 @@ export const HomeScreen: React.FC = () => {
       // Local updates
     } else if (user) {
       await statusService.updateStatus(user.id, finalEmoji, finalText);
+
+      // Trigger push notification to partner
+      if (partner?.id) {
+        try {
+          const tokenService = new UserPushTokenService();
+          const partnerToken = await tokenService.fetchPushToken(partner.id);
+          if (partnerToken) {
+            await sendPushNotification(
+              partnerToken,
+              'Cập nhật trạng thái! 💕',
+              `${user?.nickname || 'Người ấy'} đổi trạng thái: ${finalEmoji} ${finalText}`
+            );
+          }
+        } catch (err) {
+          console.log('Lỗi gửi push notification:', err);
+        }
+      }
     }
 
     setUserEmoji(finalEmoji);
@@ -170,6 +405,111 @@ export const HomeScreen: React.FC = () => {
       await updateAnniversary(anniversaryInput);
       setIsAnniversaryModalOpen(false);
     }
+  };
+
+  // Mood Log Actions
+  const handleAddMoodLog = async () => {
+    if (!moodNote.trim()) return;
+
+    setIsAddingMood(true);
+    const newLog = {
+      userId: user?.id || 'user-1',
+      coupleId: coupleId || 'demo-couple-id',
+      moodType: selectedMoodType,
+      note: moodNote.trim(),
+      isShared: moodIsShared,
+    };
+
+    try {
+      if (isDemoMode) {
+        const id = `m-${Date.now()}`;
+        const updated = [{ id, createdAt: new Date().toISOString(), ...newLog } as UserMoodLog, ...moodLogs];
+        setMoodLogs(updated);
+        demoStorage['demo_mood_logs'] = JSON.stringify(updated);
+      } else {
+        await moodLogService.createMoodLog(newLog);
+        await loadThemeAndMoodLogs();
+
+        // Trigger push notification to partner
+        if (partner?.id && moodIsShared) {
+          try {
+            const tokenService = new UserPushTokenService();
+            const partnerToken = await tokenService.fetchPushToken(partner.id);
+            if (partnerToken) {
+              await sendPushNotification(
+                partnerToken,
+                'Tâm trạng mới từ nửa kia! ❤️',
+                `${user?.nickname || 'Người ấy'} vừa ghi nhận cảm xúc: ${selectedMoodType}`
+              );
+            }
+          } catch (err) {
+            console.log('Lỗi gửi push notification:', err);
+          }
+        }
+      }
+      setMoodNote('');
+      setIsOpenAddMoodModal(false);
+    } catch {}
+    setIsAddingMood(false);
+  };
+
+  const handleDeleteMoodLog = async (id: string) => {
+    try {
+      if (isDemoMode) {
+        const updated = moodLogs.filter(m => m.id !== id);
+        setMoodLogs(updated);
+        demoStorage['demo_mood_logs'] = JSON.stringify(updated);
+      } else {
+        await moodLogService.deleteMoodLog(id);
+        await loadThemeAndMoodLogs();
+      }
+    } catch {}
+  };
+
+  // Custom Theme Actions
+  const handleSaveTheme = async () => {
+    setIsSavingTheme(true);
+    const customizationData = {
+      coupleId: coupleId || 'demo-couple-id',
+      customAvatar1Url: themeAvatar1.trim() || undefined,
+      customAvatar2Url: themeAvatar2.trim() || undefined,
+      backgroundUrl: themeBackground.trim() || undefined,
+    };
+
+    try {
+      if (isDemoMode) {
+        setThemeCustomization(customizationData as any);
+        demoStorage['demo_custom_theme'] = JSON.stringify(customizationData);
+      } else {
+        await customizationService.upsertCustomization(customizationData);
+        await loadThemeAndMoodLogs();
+      }
+      setIsOpenThemeModal(false);
+    } catch {}
+    setIsSavingTheme(false);
+  };
+
+  const handleResetTheme = async () => {
+    setIsSavingTheme(true);
+    try {
+      if (isDemoMode) {
+        setThemeCustomization(null);
+        setThemeAvatar1('');
+        setThemeAvatar2('');
+        setThemeBackground('');
+        delete demoStorage['demo_custom_theme'];
+      } else if (coupleId) {
+        await customizationService.upsertCustomization({
+          coupleId,
+          customAvatar1Url: undefined,
+          customAvatar2Url: undefined,
+          backgroundUrl: undefined,
+        });
+        await loadThemeAndMoodLogs();
+      }
+      setIsOpenThemeModal(false);
+    } catch {}
+    setIsSavingTheme(false);
   };
 
   const calculateDays = () => {
@@ -308,6 +648,52 @@ export const HomeScreen: React.FC = () => {
     return upcoming.length > 0 ? upcoming[0] : null;
   }, [user, partner, anniversaryDate, customMilestones]);
 
+  const currentWish = useMemo(() => {
+    if (wishes.length === 0) return null;
+
+    const today = new Date();
+    const currentMonth = today.getMonth() + 1; // 1-indexed
+    const currentDate = today.getDate(); // 1-31
+
+    // 1. Check for special date-matching wishes
+    const specialWish = wishes.find(
+      w => w.type === 'special' && w.specialMonth === currentMonth && w.specialDay === currentDate
+    );
+    if (specialWish) return specialWish;
+
+    // 2. Check for birthday wishes
+    if (partner?.dob) {
+      const partnerDob = new Date(partner.dob);
+      if (partnerDob.getMonth() + 1 === currentMonth && partnerDob.getDate() === currentDate) {
+        return {
+          content: `Chúc mừng sinh nhật ${partner.nickname || 'nửa kia'} ngọt ngào của anh! Mong mọi điều tốt lành nhất sẽ đến với em hôm nay! 🎉🎂❤️`,
+          type: 'special'
+        } as DailyWish;
+      }
+    }
+    if (user?.dob) {
+      const userDob = new Date(user.dob);
+      if (userDob.getMonth() + 1 === currentMonth && userDob.getDate() === currentDate) {
+        return {
+          content: `Hôm nay là sinh nhật của bạn! Chúc bạn tuổi mới ngập tràn niềm vui, tiếng cười và tình yêu bên người ấy! 🎉🎂❤️`,
+          type: 'special'
+        } as DailyWish;
+      }
+    }
+
+    // 3. Fallback to daily wishes based on day of year
+    const dailyWishes = wishes.filter(w => w.type === 'daily');
+    if (dailyWishes.length === 0) return null;
+
+    const start = new Date(today.getFullYear(), 0, 0);
+    const diff = today.getTime() - start.getTime();
+    const oneDay = 1000 * 60 * 60 * 24;
+    const dayOfYear = Math.floor(diff / oneDay);
+
+    const index = dayOfYear % dailyWishes.length;
+    return dailyWishes[index];
+  }, [wishes, partner, user]);
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -400,17 +786,144 @@ export const HomeScreen: React.FC = () => {
         {(isPaired || isDemoMode) && (
           <View>
             {/* Heartbeat Connector */}
-            <View style={[styles.card, { padding: 0, overflow: 'hidden', marginBottom: 16 }]}>
-              <HeartbeatConnector
-                days={daysCount}
-                user1Avatar={user?.avatarUrl || ''}
-                user2Avatar={partner?.avatarUrl || ''}
-                user1Name={user?.nickname || 'Bạn'}
-                user2Name={partner?.nickname || 'Nửa kia'}
-                user1Dob={user?.dob || ''}
-                user2Dob={partner?.dob || ''}
-                isCelebrationDay={nearestEvent?.daysRemaining === 0}
-              />
+            <View style={[styles.card, { padding: 0, overflow: 'hidden', marginBottom: 16, position: 'relative' }]}>
+              <TouchableOpacity
+                onPress={() => setIsOpenThemeModal(true)}
+                activeOpacity={0.8}
+                style={{
+                  position: 'absolute',
+                  top: 12,
+                  right: 12,
+                  zIndex: 10,
+                  backgroundColor: '#ffffff',
+                  borderWidth: 1.5,
+                  borderColor: AppTheme.borderColor,
+                  borderRadius: 18,
+                  padding: 8,
+                  elevation: 2,
+                  shadowColor: '#000000',
+                  shadowOffset: { width: 0, height: 1 },
+                  shadowOpacity: 0.2,
+                  shadowRadius: 1.41,
+                }}
+              >
+                <Edit3 size={14} color={AppTheme.textPrimary} />
+              </TouchableOpacity>
+              {themeCustomization?.backgroundUrl ? (
+                <ImageBackground source={{ uri: themeCustomization.backgroundUrl }} style={{ width: '100%' }} resizeMode="cover">
+                  <HeartbeatConnector
+                    days={daysCount}
+                    user1Avatar={themeCustomization?.customAvatar1Url || user?.avatarUrl || ''}
+                    user2Avatar={themeCustomization?.customAvatar2Url || partner?.avatarUrl || ''}
+                    user1Name={user?.nickname || 'Bạn'}
+                    user2Name={partner?.nickname || 'Nửa kia'}
+                    user1Dob={user?.dob || ''}
+                    user2Dob={partner?.dob || ''}
+                    isCelebrationDay={nearestEvent?.daysRemaining === 0}
+                  />
+                  <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, paddingBottom: 16, marginTop: -8 }}>
+                    <TouchableOpacity
+                      onPress={() => handleSendLoveOrPoke('love')}
+                      disabled={isSendingTestNotification}
+                      activeOpacity={0.8}
+                      style={{
+                        backgroundColor: AppTheme.bgCard,
+                        borderWidth: 1.8,
+                        borderColor: AppTheme.borderColor,
+                        borderRadius: 20,
+                        paddingVertical: 6,
+                        paddingHorizontal: 12,
+                        shadowColor: '#000000',
+                        shadowOffset: { width: 1.5, height: 1.5 },
+                        shadowOpacity: 1,
+                        shadowRadius: 0,
+                        elevation: 1,
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Text numberOfLines={1} ellipsizeMode="clip" style={{ fontSize: 11, fontWeight: '900', color: AppTheme.textPrimary }}>❤️ Nhớ nửa kia</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleSendLoveOrPoke('poke')}
+                      disabled={isSendingTestNotification}
+                      activeOpacity={0.8}
+                      style={{
+                        backgroundColor: AppTheme.bgCard,
+                        borderWidth: 1.8,
+                        borderColor: AppTheme.borderColor,
+                        borderRadius: 20,
+                        paddingVertical: 6,
+                        paddingHorizontal: 12,
+                        shadowColor: '#000000',
+                        shadowOffset: { width: 1.5, height: 1.5 },
+                        shadowOpacity: 1,
+                        shadowRadius: 0,
+                        elevation: 1,
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Text numberOfLines={1} ellipsizeMode="clip" style={{ fontSize: 11, fontWeight: '900', color: AppTheme.textPrimary }}>🤪 Chọc ghẹo</Text>
+                    </TouchableOpacity>
+                  </View>
+                </ImageBackground>
+              ) : (
+                <>
+                  <HeartbeatConnector
+                    days={daysCount}
+                    user1Avatar={themeCustomization?.customAvatar1Url || user?.avatarUrl || ''}
+                    user2Avatar={themeCustomization?.customAvatar2Url || partner?.avatarUrl || ''}
+                    user1Name={user?.nickname || 'Bạn'}
+                    user2Name={partner?.nickname || 'Nửa kia'}
+                    user1Dob={user?.dob || ''}
+                    user2Dob={partner?.dob || ''}
+                    isCelebrationDay={nearestEvent?.daysRemaining === 0}
+                  />
+                  <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, paddingBottom: 16, marginTop: -8 }}>
+                    <TouchableOpacity
+                      onPress={() => handleSendLoveOrPoke('love')}
+                      disabled={isSendingTestNotification}
+                      activeOpacity={0.8}
+                      style={{
+                        backgroundColor: AppTheme.bgCard,
+                        borderWidth: 1.8,
+                        borderColor: AppTheme.borderColor,
+                        borderRadius: 20,
+                        paddingVertical: 6,
+                        paddingHorizontal: 12,
+                        shadowColor: '#000000',
+                        shadowOffset: { width: 1.5, height: 1.5 },
+                        shadowOpacity: 1,
+                        shadowRadius: 0,
+                        elevation: 1,
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Text numberOfLines={1} ellipsizeMode="clip" style={{ fontSize: 11, fontWeight: '900', color: AppTheme.textPrimary }}>❤️ Nhớ nửa kia</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleSendLoveOrPoke('poke')}
+                      disabled={isSendingTestNotification}
+                      activeOpacity={0.8}
+                      style={{
+                        backgroundColor: AppTheme.bgCard,
+                        borderWidth: 1.8,
+                        borderColor: AppTheme.borderColor,
+                        borderRadius: 20,
+                        paddingVertical: 6,
+                        paddingHorizontal: 12,
+                        shadowColor: '#000000',
+                        shadowOffset: { width: 1.5, height: 1.5 },
+                        shadowOpacity: 1,
+                        shadowRadius: 0,
+                        elevation: 1,
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Text numberOfLines={1} ellipsizeMode="clip" style={{ fontSize: 11, fontWeight: '900', color: AppTheme.textPrimary }}>🤪 Chọc ghẹo</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
             </View>
 
             {/* Upcoming Event Card */}
@@ -465,26 +978,147 @@ export const HomeScreen: React.FC = () => {
                       <Text style={{ fontSize: 14, fontWeight: '900', color: AppTheme.colorPrimary }}>{nearestEvent.daysRemaining} ngày</Text>
                     </View>
                   </View>
+                  {/* Plan details list */}
+                  {(() => {
+                    const eventPlans = plans.filter(p => p.milestoneTitle === nearestEvent.title);
+                    if (eventPlans.length > 0) {
+                      return (
+                        <View style={{
+                          marginTop: 12,
+                          paddingTop: 12,
+                          borderTopWidth: 1,
+                          borderStyle: 'dashed',
+                          borderColor: 'rgba(0,0,0,0.1)',
+                        }}>
+                          <Text style={{
+                            fontSize: 10,
+                            fontWeight: '800',
+                            color: AppTheme.textSecondary,
+                            textTransform: 'uppercase',
+                            letterSpacing: 0.5,
+                            marginBottom: 8,
+                          }}>🚗 Kế hoạch cho ngày này:</Text>
+                          <View style={{ flexDirection: 'column', gap: 8 }}>
+                            {['go', 'eat', 'play'].map(cat => {
+                              const catPlans = eventPlans.filter(p => p.category === cat);
+                              const icon = cat === 'go' ? '🚗' : cat === 'eat' ? '🍔' : '🎮';
+                              const label = cat === 'go' ? 'Đi đâu' : cat === 'eat' ? 'Ăn gì' : 'Chơi gì';
+                              return (
+                                <View key={cat} style={{
+                                  backgroundColor: '#f9f9f9',
+                                  borderWidth: 1,
+                                  borderColor: 'rgba(0,0,0,0.05)',
+                                  borderRadius: 8,
+                                  padding: 8,
+                                }}>
+                                  <Text style={{
+                                    fontSize: 10,
+                                    fontWeight: '800',
+                                    color: AppTheme.textSecondary,
+                                    textTransform: 'uppercase',
+                                    marginBottom: 4,
+                                  }}>{icon} {label}</Text>
+                                  <View style={{ flexDirection: 'column', gap: 2 }}>
+                                    {catPlans.length === 0 ? (
+                                      <Text style={{ fontSize: 11, fontStyle: 'italic', color: 'rgba(0,0,0,0.3)' }}>Chưa lên kế hoạch</Text>
+                                    ) : (
+                                      catPlans.map(p => (
+                                        <Text key={p.id} style={{ fontSize: 11, fontWeight: '600', color: AppTheme.textPrimary }}>
+                                          • {p.content}
+                                        </Text>
+                                      ))
+                                    )}
+                                  </View>
+                                </View>
+                              );
+                            })}
+                          </View>
+                        </View>
+                      );
+                    }
+                    return null;
+                  })()}
                 </View>
               );
             })()}
 
+            {/* Lời chúc ngọt ngào hôm nay */}
+            {currentWish && (
+              <View style={[
+                styles.card, 
+                { 
+                  marginBottom: 16, 
+                  backgroundColor: '#ffffff',
+                  borderColor: currentWish.type === 'special' ? AppTheme.colorWarning : AppTheme.borderColor,
+                  position: 'relative',
+                  overflow: 'hidden'
+                }
+              ]}>
+                {currentWish.type === 'special' && (
+                  <View style={{
+                    position: 'absolute',
+                    top: 0,
+                    right: 0,
+                    backgroundColor: AppTheme.colorWarning,
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    borderBottomLeftRadius: 8,
+                    borderLeftWidth: 1.5,
+                    borderBottomWidth: 1.5,
+                    borderColor: AppTheme.borderColor,
+                  }}>
+                    <Text style={{ fontSize: 8, fontWeight: '900', color: '#ffffff', textTransform: 'uppercase' }}>Ngày đặc biệt ✨</Text>
+                  </View>
+                )}
+                
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <View style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    backgroundColor: currentWish.type === 'special' ? 'rgba(238, 82, 83, 0.1)' : 'rgba(255, 101, 132, 0.1)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: 1.5,
+                    borderColor: AppTheme.borderColor,
+                  }}>
+                    <Heart size={16} color={currentWish.type === 'special' ? AppTheme.colorWarning : AppTheme.colorPrimary} fill={currentWish.type === 'special' ? AppTheme.colorWarning : AppTheme.colorPrimary} />
+                  </View>
+                  <View style={{ flex: 1, paddingRight: currentWish.type === 'special' ? 40 : 0 }}>
+                    <Text style={styles.label}>Lời chúc ngọt ngào hôm nay</Text>
+                    <Text style={{
+                      fontSize: 13,
+                      fontWeight: '700',
+                      color: AppTheme.textPrimary,
+                      fontStyle: 'italic',
+                      lineHeight: 18,
+                      marginTop: 4,
+                    }}>
+                      "{currentWish.content}"
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )}
+
             {/* Anniversary display */}
             <View style={[styles.card, styles.rowBetween]}>
-              <View>
+              <View style={{ flex: 1, marginRight: 8 }}>
                 <Text style={styles.label}>Ngày bắt đầu yêu</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
                   <Calendar size={18} color={AppTheme.colorPrimary} style={{ marginRight: 6 }} />
                   <Text style={styles.annDateText}>{formatDateString(anniversaryDate)}</Text>
                 </View>
               </View>
-              <TouchableOpacity
-                onPress={handleOpenAnniversaryModal}
-                activeOpacity={0.8}
-                style={styles.editBtn}
-              >
-                <Text style={styles.editBtnText}>Sửa</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <TouchableOpacity
+                  onPress={handleOpenAnniversaryModal}
+                  activeOpacity={0.8}
+                  style={[styles.editBtn, { backgroundColor: AppTheme.textPrimary }]}
+                >
+                  <Text style={[styles.editBtnText, { color: '#ffffff' }]}>Sửa</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* Mood status card */}
@@ -531,6 +1165,79 @@ export const HomeScreen: React.FC = () => {
                     <Text style={styles.moodBoxEmoji}>{partnerEmoji}</Text>
                     <Text style={styles.moodBoxText}>{partnerStatusText}</Text>
                   </View>
+                </View>
+              )}
+            </View>
+
+            {/* Mood Log Section */}
+            <View style={styles.card}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <Text style={styles.moodTitle}>Lịch sử cảm xúc</Text>
+                <TouchableOpacity
+                  onPress={() => setIsOpenAddMoodModal(true)}
+                  activeOpacity={0.8}
+                  style={styles.editBtn}
+                >
+                  <Text style={styles.editBtnText}>+ Ghi nhận</Text>
+                </TouchableOpacity>
+              </View>
+
+              {moodLogs.length === 0 ? (
+                <Text style={styles.loadingText}>Chưa có lịch sử cảm xúc nào được lưu.</Text>
+              ) : (
+                <View style={{ gap: 8 }}>
+                  {moodLogs.map((log) => {
+                    const isOwnLog = log.userId === user?.id || log.userId === 'user-1';
+                    const creatorName = isOwnLog ? 'Bạn' : (partner?.nickname || 'Nửa kia');
+
+                    return (
+                      <View
+                        key={log.id}
+                        style={{
+                          backgroundColor: AppTheme.bgPrimary,
+                          borderWidth: 1.5,
+                          borderColor: AppTheme.borderColor,
+                          borderRadius: 12,
+                          padding: 12,
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <View style={{ flex: 1, marginRight: 8 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <Text style={{ fontWeight: '800', fontSize: 11, color: AppTheme.textPrimary }}>{creatorName}</Text>
+                            <View style={{ backgroundColor: 'white', borderWidth: 1, borderColor: AppTheme.borderColor, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 1 }}>
+                              <Text style={{ fontSize: 9, fontWeight: '800' }}>{log.moodType}</Text>
+                            </View>
+                            <Text style={{ fontSize: 9, color: AppTheme.textSecondary }}>
+                              {new Date(log.createdAt || '').toLocaleDateString('vi-VN', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                month: 'numeric',
+                                day: 'numeric',
+                              })}
+                            </Text>
+                          </View>
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: AppTheme.textSecondary, marginTop: 4 }}>{log.note}</Text>
+                          {isOwnLog && (
+                            <Text style={{ fontSize: 8, color: AppTheme.textSecondary, marginTop: 2 }}>
+                              {log.isShared ? '🌍 Chia sẻ với đối phương' : '🔒 Chỉ mình bạn'}
+                            </Text>
+                          )}
+                        </View>
+
+                        {isOwnLog && (
+                          <TouchableOpacity
+                            onPress={() => handleDeleteMoodLog(log.id)}
+                            style={{ padding: 4 }}
+                          >
+                            <Trash2 size={16} color={AppTheme.colorWarning} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    );
+                  })}
                 </View>
               )}
             </View>
@@ -680,6 +1387,336 @@ export const HomeScreen: React.FC = () => {
               >
                 <Text style={[styles.actionBtnText, { color: '#ffffff' }]}>Lưu</Text>
               </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Add Mood Log Modal */}
+      {isOpenAddMoodModal && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalHeader}>Ghi nhận cảm xúc mới</Text>
+
+            <Text style={styles.label}>Chọn tâm trạng</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+              {[
+                '😊 Vui vẻ', '🥰 Hạnh phúc', '😡 Giận dỗi', '🥺 Mè nheo',
+                '😢 Buồn bã', '🥱 Mệt mỏi', '🥳 Hào hứng', '😴 Buồn ngủ'
+              ].map((mood) => (
+                <TouchableOpacity
+                  key={mood}
+                  onPress={() => setSelectedMoodType(mood)}
+                  style={[
+                    styles.emojiBtn,
+                    selectedMoodType === mood && styles.emojiBtnSelected,
+                    { width: '47%', paddingVertical: 8, height: 'auto', borderWidth: 1.5, borderColor: AppTheme.borderColor }
+                  ]}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '800' }}>{mood}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.label}>Ghi chú chi tiết</Text>
+            <TextInput
+              value={moodNote}
+              onChangeText={setMoodNote}
+              placeholder="Hôm nay có chuyện gì thế..."
+              placeholderTextColor="#666"
+              style={[styles.input, { marginBottom: 12 }]}
+            />
+
+            <TouchableOpacity
+              onPress={() => setMoodIsShared(!moodIsShared)}
+              activeOpacity={0.8}
+              style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}
+            >
+              <View style={{
+                width: 18,
+                height: 18,
+                borderWidth: 1.8,
+                borderColor: AppTheme.borderColor,
+                borderRadius: 4,
+                backgroundColor: AppTheme.bgPrimary,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: 8,
+              }}>
+                {moodIsShared && <Text style={{ color: AppTheme.colorPrimary, fontWeight: '900', fontSize: 11 }}>✓</Text>}
+              </View>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: AppTheme.textPrimary }}>Chia sẻ cảm xúc này cho đối phương</Text>
+            </TouchableOpacity>
+
+            <View style={styles.rowEnd}>
+              <TouchableOpacity
+                onPress={() => setIsOpenAddMoodModal(false)}
+                style={[styles.actionBtn, styles.secondaryActionBtn]}
+              >
+                <Text style={styles.secondaryActionBtnText}>Hủy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleAddMoodLog}
+                disabled={isAddingMood}
+                style={[styles.actionBtn, { marginLeft: 8 }]}
+              >
+                <Text style={styles.actionBtnText}>{isAddingMood ? '...' : 'Lưu'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Theme Customization Modal */}
+      {isOpenThemeModal && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalHeader}>Tùy chỉnh giao diện đếm ngày</Text>
+
+            {/* Field 1: Avatar của bạn */}
+            <Text style={styles.label}>Avatar của bạn</Text>
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: AppTheme.bgPrimary,
+              borderWidth: 1.5,
+              borderColor: AppTheme.borderColor,
+              borderRadius: 12,
+              padding: 10,
+              marginBottom: 12,
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  borderWidth: 1.5,
+                  borderColor: AppTheme.borderColor,
+                  overflow: 'hidden',
+                  backgroundColor: AppTheme.bgCard,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                }}>
+                  {themeAvatar1 ? (
+                    <ImageBackground source={{ uri: themeAvatar1 }} style={{ width: '100%', height: '100%' }} />
+                  ) : user?.avatarUrl ? (
+                    <ImageBackground source={{ uri: user.avatarUrl }} style={{ width: '100%', height: '100%', opacity: 0.6 }} />
+                  ) : (
+                    <Text style={{ fontSize: 18 }}>👦</Text>
+                  )}
+                </View>
+                <View>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: AppTheme.textPrimary }}>
+                    {themeAvatar1 ? 'Đã tùy chỉnh' : 'Mặc định'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <TouchableOpacity
+                  onPress={() => pickImage('avatar1')}
+                  activeOpacity={0.7}
+                  style={{
+                    backgroundColor: AppTheme.colorPrimary,
+                    borderWidth: 1.5,
+                    borderColor: AppTheme.borderColor,
+                    borderRadius: 8,
+                    paddingVertical: 8,
+                    paddingHorizontal: 12,
+                  }}
+                >
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: '#ffffff' }}>Chọn ảnh</Text>
+                </TouchableOpacity>
+                {!!themeAvatar1 && (
+                  <TouchableOpacity
+                    onPress={() => setThemeAvatar1('')}
+                    activeOpacity={0.7}
+                    style={{
+                      backgroundColor: AppTheme.bgCard,
+                      borderWidth: 1.5,
+                      borderColor: AppTheme.borderColor,
+                      borderRadius: 8,
+                      paddingVertical: 8,
+                      paddingHorizontal: 12,
+                    }}
+                  >
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: AppTheme.textPrimary }}>Xóa</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {/* Field 2: Avatar của đối phương */}
+            <Text style={styles.label}>Avatar đối phương</Text>
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: AppTheme.bgPrimary,
+              borderWidth: 1.5,
+              borderColor: AppTheme.borderColor,
+              borderRadius: 12,
+              padding: 10,
+              marginBottom: 12,
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  borderWidth: 1.5,
+                  borderColor: AppTheme.borderColor,
+                  overflow: 'hidden',
+                  backgroundColor: AppTheme.bgCard,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                }}>
+                  {themeAvatar2 ? (
+                    <ImageBackground source={{ uri: themeAvatar2 }} style={{ width: '100%', height: '100%' }} />
+                  ) : partner?.avatarUrl ? (
+                    <ImageBackground source={{ uri: partner.avatarUrl }} style={{ width: '100%', height: '100%', opacity: 0.6 }} />
+                  ) : (
+                    <Text style={{ fontSize: 18 }}>👧</Text>
+                  )}
+                </View>
+                <View>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: AppTheme.textPrimary }}>
+                    {themeAvatar2 ? 'Đã tùy chỉnh' : 'Mặc định'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <TouchableOpacity
+                  onPress={() => pickImage('avatar2')}
+                  activeOpacity={0.7}
+                  style={{
+                    backgroundColor: AppTheme.colorPrimary,
+                    borderWidth: 1.5,
+                    borderColor: AppTheme.borderColor,
+                    borderRadius: 8,
+                    paddingVertical: 8,
+                    paddingHorizontal: 12,
+                  }}
+                >
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: '#ffffff' }}>Chọn ảnh</Text>
+                </TouchableOpacity>
+                {!!themeAvatar2 && (
+                  <TouchableOpacity
+                    onPress={() => setThemeAvatar2('')}
+                    activeOpacity={0.7}
+                    style={{
+                      backgroundColor: AppTheme.bgCard,
+                      borderWidth: 1.5,
+                      borderColor: AppTheme.borderColor,
+                      borderRadius: 8,
+                      paddingVertical: 8,
+                      paddingHorizontal: 12,
+                    }}
+                  >
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: AppTheme.textPrimary }}>Xóa</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {/* Field 3: Hình nền */}
+            <Text style={styles.label}>Hình nền đếm ngày</Text>
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: AppTheme.bgPrimary,
+              borderWidth: 1.5,
+              borderColor: AppTheme.borderColor,
+              borderRadius: 12,
+              padding: 10,
+              marginBottom: 20,
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{
+                  width: 56,
+                  height: 42,
+                  borderRadius: 6,
+                  borderWidth: 1.5,
+                  borderColor: AppTheme.borderColor,
+                  overflow: 'hidden',
+                  backgroundColor: AppTheme.bgCard,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                }}>
+                  {themeBackground ? (
+                    <ImageBackground source={{ uri: themeBackground }} style={{ width: '100%', height: '100%' }} />
+                  ) : (
+                    <Text style={{ fontSize: 9, fontWeight: '800', color: AppTheme.textSecondary, textAlign: 'center' }}>Mặc định</Text>
+                  )}
+                </View>
+                <View>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: AppTheme.textPrimary }}>
+                    {themeBackground ? 'Đã tùy chỉnh' : 'Mặc định'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <TouchableOpacity
+                  onPress={() => pickImage('background')}
+                  activeOpacity={0.7}
+                  style={{
+                    backgroundColor: AppTheme.colorPrimary,
+                    borderWidth: 1.5,
+                    borderColor: AppTheme.borderColor,
+                    borderRadius: 8,
+                    paddingVertical: 8,
+                    paddingHorizontal: 12,
+                  }}
+                >
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: '#ffffff' }}>Chọn ảnh</Text>
+                </TouchableOpacity>
+                {!!themeBackground && (
+                  <TouchableOpacity
+                    onPress={() => setThemeBackground('')}
+                    activeOpacity={0.7}
+                    style={{
+                      backgroundColor: AppTheme.bgCard,
+                      borderWidth: 1.5,
+                      borderColor: AppTheme.borderColor,
+                      borderRadius: 8,
+                      paddingVertical: 8,
+                      paddingHorizontal: 12,
+                    }}
+                  >
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: AppTheme.textPrimary }}>Xóa</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <TouchableOpacity
+                onPress={handleResetTheme}
+                disabled={isSavingTheme}
+                style={[styles.actionBtn, { backgroundColor: AppTheme.colorWarning }]}
+              >
+                <Text style={styles.actionBtnText}>Reset</Text>
+              </TouchableOpacity>
+
+              <View style={styles.rowEnd}>
+                <TouchableOpacity
+                  onPress={() => setIsOpenThemeModal(false)}
+                  style={[styles.actionBtn, styles.secondaryActionBtn]}
+                >
+                  <Text style={styles.secondaryActionBtnText}>Hủy</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleSaveTheme}
+                  disabled={isSavingTheme}
+                  style={[styles.actionBtn, { marginLeft: 8 }]}
+                >
+                  <Text style={styles.actionBtnText}>{isSavingTheme ? '...' : 'Lưu'}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </View>

@@ -14,7 +14,13 @@ import {
   LoveDiary, mapLoveDiaryFromDb, mapLoveDiaryToDb,
   DiaryMedia, mapDiaryMediaFromDb, mapDiaryMediaToDb,
   WidgetSetting, mapWidgetSettingFromDb, mapWidgetSettingToDb,
-  PairingCode
+  PairingCode,
+  PartnerProfileNote, mapPartnerProfileNoteFromDb, mapPartnerProfileNoteToDb,
+  CoupleEvent, mapCoupleEventFromDb, mapCoupleEventToDb,
+  UserMoodLog, mapUserMoodLogFromDb, mapUserMoodLogToDb,
+  CoupleCountdownCustomization, mapCoupleCountdownCustomizationFromDb, mapCoupleCountdownCustomizationToDb,
+  MilestonePlan, mapMilestonePlanFromDb, mapMilestonePlanToDb,
+  DailyWish, mapDailyWishFromDb, mapDailyWishToDb
 } from '../models';
 
 export class CoupleService {
@@ -504,3 +510,256 @@ export class DiaryMediaService {
       });
   }
 }
+
+export class PartnerProfileNoteService {
+  async fetchNote(writerId: string, targetId: string): Promise<PartnerProfileNote | null> {
+    try {
+      const { data, error } = await supabase
+        .from(DatabaseConstants.partnerProfileNotes)
+        .select()
+        .eq('writer_id', writerId)
+        .eq('target_id', targetId)
+        .maybeSingle();
+
+      if (error || !data) return null;
+      return mapPartnerProfileNoteFromDb(data);
+    } catch {
+      return null;
+    }
+  }
+
+  async fetchReceivedNotes(targetId: string): Promise<PartnerProfileNote[]> {
+    try {
+      const { data, error } = await supabase
+        .from(DatabaseConstants.partnerProfileNotes)
+        .select()
+        .eq('target_id', targetId)
+        .eq('is_shared', true);
+
+      if (error || !data) return [];
+      return data.map(mapPartnerProfileNoteFromDb);
+    } catch {
+      return [];
+    }
+  }
+
+  async upsertNote(note: Omit<PartnerProfileNote, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> {
+    const dbData = mapPartnerProfileNoteToDb(note as any);
+    await supabase
+      .from(DatabaseConstants.partnerProfileNotes)
+      .upsert(dbData, { onConflict: 'writer_id,target_id' });
+  }
+
+  async deleteNote(id: string): Promise<void> {
+    await supabase
+      .from(DatabaseConstants.partnerProfileNotes)
+      .delete()
+      .eq('id', id);
+  }
+}
+
+export class CoupleEventService {
+  async fetchEvents(coupleId: string): Promise<CoupleEvent[]> {
+    try {
+      const { data, error } = await supabase
+        .from(DatabaseConstants.coupleEvents)
+        .select()
+        .eq('couple_id', coupleId)
+        .order('event_date', { ascending: false })
+        .order('event_time', { ascending: false });
+
+      if (error || !data) return [];
+      return data.map(mapCoupleEventFromDb);
+    } catch {
+      return [];
+    }
+  }
+
+  async createEvent(event: Omit<CoupleEvent, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> {
+    const dbData = mapCoupleEventToDb(event as any);
+    delete dbData.id;
+    await supabase
+      .from(DatabaseConstants.coupleEvents)
+      .insert(dbData);
+  }
+
+  async updateEvent(event: CoupleEvent): Promise<void> {
+    const dbData = mapCoupleEventToDb(event);
+    await supabase
+      .from(DatabaseConstants.coupleEvents)
+      .update(dbData)
+      .eq('id', event.id);
+  }
+
+  async deleteEvent(eventId: string): Promise<void> {
+    await supabase
+      .from(DatabaseConstants.coupleEvents)
+      .delete()
+      .eq('id', eventId);
+  }
+}
+
+export class UserMoodLogService {
+  async fetchMyMoodLogs(userId: string): Promise<UserMoodLog[]> {
+    try {
+      const { data, error } = await supabase
+        .from(DatabaseConstants.userMoodLogs)
+        .select()
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (error || !data) return [];
+      return data.map(mapUserMoodLogFromDb);
+    } catch {
+      return [];
+    }
+  }
+
+  async fetchPartnerMoodLogs(partnerId: string): Promise<UserMoodLog[]> {
+    try {
+      const { data, error } = await supabase
+        .from(DatabaseConstants.userMoodLogs)
+        .select()
+        .eq('user_id', partnerId)
+        .eq('is_shared', true)
+        .order('created_at', { ascending: false });
+
+      if (error || !data) return [];
+      return data.map(mapUserMoodLogFromDb);
+    } catch {
+      return [];
+    }
+  }
+
+  async createMoodLog(log: Omit<UserMoodLog, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> {
+    const dbData = mapUserMoodLogToDb(log as any);
+    delete dbData.id;
+    await supabase
+      .from(DatabaseConstants.userMoodLogs)
+      .insert(dbData);
+  }
+
+  async deleteMoodLog(logId: string): Promise<void> {
+    await supabase
+      .from(DatabaseConstants.userMoodLogs)
+      .delete()
+      .eq('id', logId);
+  }
+}
+
+export class CoupleCountdownCustomizationService {
+  async fetchCustomization(coupleId: string): Promise<CoupleCountdownCustomization | null> {
+    try {
+      const { data, error } = await supabase
+        .from(DatabaseConstants.coupleCountdownCustomizations)
+        .select()
+        .eq('couple_id', coupleId)
+        .maybeSingle();
+
+      if (error || !data) return null;
+      return mapCoupleCountdownCustomizationFromDb(data);
+    } catch {
+      return null;
+    }
+  }
+
+  async upsertCustomization(customization: Omit<CoupleCountdownCustomization, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> {
+    const dbData = mapCoupleCountdownCustomizationToDb(customization as any);
+    await supabase
+      .from(DatabaseConstants.coupleCountdownCustomizations)
+      .upsert(dbData, { onConflict: 'couple_id' });
+  }
+}
+
+export class UserPushTokenService {
+  async updatePushToken(userId: string, token: string): Promise<void> {
+    await supabase
+      .from(DatabaseConstants.userPushTokens)
+      .upsert(
+        {
+          user_id: userId,
+          push_token: token,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: 'user_id' }
+      );
+  }
+
+  async fetchPushToken(userId: string): Promise<string | null> {
+    try {
+      const { data, error } = await supabase
+        .from(DatabaseConstants.userPushTokens)
+        .select('push_token')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (error || !data) return null;
+      return data.push_token;
+    } catch {
+      return null;
+    }
+  }
+}
+
+export class MilestonePlanService {
+  async fetchPlans(coupleId: string): Promise<MilestonePlan[]> {
+    try {
+      const { data, error } = await supabase
+        .from(DatabaseConstants.milestonePlans)
+        .select()
+        .eq('couple_id', coupleId)
+        .order('created_at', { ascending: true });
+
+      if (error || !data) return [];
+      return data.map(mapMilestonePlanFromDb);
+    } catch {
+      return [];
+    }
+  }
+
+  async createPlan(coupleId: string, milestoneTitle: string, category: 'go' | 'eat' | 'play', content: string, milestoneId?: string): Promise<MilestonePlan | null> {
+    try {
+      const { data, error } = await supabase
+        .from(DatabaseConstants.milestonePlans)
+        .insert({
+          couple_id: coupleId,
+          milestone_title: milestoneTitle,
+          category,
+          content,
+          milestone_id: milestoneId || null,
+        })
+        .select()
+        .single();
+
+      if (error || !data) return null;
+      return mapMilestonePlanFromDb(data);
+    } catch {
+      return null;
+    }
+  }
+
+  async deletePlan(planId: string): Promise<void> {
+    await supabase
+      .from(DatabaseConstants.milestonePlans)
+      .delete()
+      .eq('id', planId);
+  }
+}
+
+export class DailyWishService {
+  async fetchAllWishes(): Promise<DailyWish[]> {
+    try {
+      const { data, error } = await supabase
+        .from(DatabaseConstants.dailyWishes)
+        .select()
+        .order('created_at', { ascending: true });
+
+      if (error || !data) return [];
+      return data.map(mapDailyWishFromDb);
+    } catch {
+      return [];
+    }
+  }
+}
+
+

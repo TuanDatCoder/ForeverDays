@@ -129,6 +129,50 @@ export interface DiaryMedia {
     mediaType: 'image' | 'video';
     createdAt?: string;
 }
+export interface PartnerProfileNote {
+    id: string;
+    coupleId: string;
+    writerId: string;
+    targetId: string;
+    height?: string;
+    weight?: string;
+    hobbies?: string;
+    personality?: string;
+    isShared: boolean;
+    createdAt?: string;
+    updatedAt?: string;
+}
+export interface CoupleEvent {
+    id: string;
+    coupleId: string;
+    createdBy?: string;
+    title: string;
+    eventDate: string;
+    eventTime?: string;
+    location?: string;
+    description?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+export interface UserMoodLog {
+    id: string;
+    userId: string;
+    coupleId: string;
+    moodType: string;
+    note?: string;
+    isShared: boolean;
+    createdAt?: string;
+    updatedAt?: string;
+}
+export interface CoupleCountdownCustomization {
+    id: string;
+    coupleId: string;
+    customAvatar1Url?: string | null;
+    customAvatar2Url?: string | null;
+    backgroundUrl?: string | null;
+    createdAt?: string;
+    updatedAt?: string;
+}
 export declare function mapProfileFromDb(row: any): UserProfile;
 export declare function mapProfileToDb(profile: Partial<UserProfile>): any;
 export declare function mapCoupleFromDb(row: any): Couple;
@@ -154,3 +198,34 @@ export declare function mapDiaryMediaFromDb(row: any): DiaryMedia;
 export declare function mapDiaryMediaToDb(media: Partial<DiaryMedia>): any;
 export declare function mapWidgetSettingFromDb(row: any): WidgetSetting;
 export declare function mapWidgetSettingToDb(setting: Partial<WidgetSetting>): any;
+export declare function mapPartnerProfileNoteFromDb(row: any): PartnerProfileNote;
+export declare function mapPartnerProfileNoteToDb(note: Partial<PartnerProfileNote>): any;
+export declare function mapCoupleEventFromDb(row: any): CoupleEvent;
+export declare function mapCoupleEventToDb(event: Partial<CoupleEvent>): any;
+export declare function mapUserMoodLogFromDb(row: any): UserMoodLog;
+export declare function mapUserMoodLogToDb(log: Partial<UserMoodLog>): any;
+export declare function mapCoupleCountdownCustomizationFromDb(row: any): CoupleCountdownCustomization;
+export declare function mapCoupleCountdownCustomizationToDb(customization: Partial<CoupleCountdownCustomization>): any;
+export interface MilestonePlan {
+    id?: string;
+    coupleId: string;
+    milestoneId?: string;
+    milestoneTitle: string;
+    category: 'go' | 'eat' | 'play';
+    content: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+export declare function mapMilestonePlanFromDb(row: any): MilestonePlan;
+export declare function mapMilestonePlanToDb(plan: Partial<MilestonePlan>): any;
+export interface DailyWish {
+    id?: string;
+    content: string;
+    type: 'daily' | 'special';
+    specialMonth?: number;
+    specialDay?: number;
+    specialEvent?: string;
+    createdAt?: string;
+}
+export declare function mapDailyWishFromDb(row: any): DailyWish;
+export declare function mapDailyWishToDb(wish: Partial<DailyWish>): any;

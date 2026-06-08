@@ -134,7 +134,26 @@ const AppContent: React.FC = () => {
 
       {/* Main Content Area */}
       <div className="flex flex-col flex-1 pb-[72px] md:pb-0 overflow-y-auto">
-        {renderTabContent()}
+        <div className="flex-1">
+          {renderTabContent()}
+        </div>
+        
+        {/* Footer */}
+        <footer className="bg-bg-card border-t-[2.2px] border-border-color p-6 mt-auto text-center font-bold text-text-secondary text-xs flex flex-col items-center gap-3">
+          <div className="flex flex-col gap-1">
+            <span className="uppercase tracking-wider text-[10px]">Hợp tác & Feedback</span>
+            <a href="mailto:devprojectlabvn@gmail.com" className="text-primary-coral font-extrabold hover:underline">
+              devprojectlabvn@gmail.com
+            </a>
+          </div>
+          <div className="w-[120px] border-t-2 border-dashed border-border-color/10" />
+          <div className="flex flex-col gap-0.5">
+            <span>© 2026 Góc Vũ Trụ</span>
+            <span>
+              Crafted with ❤️ by <strong className="text-text-primary">Family Love Studio</strong>
+            </span>
+          </div>
+        </footer>
       </div>
 
       {/* Bottom Navigation Tab Bar (Visible on Mobile) */}

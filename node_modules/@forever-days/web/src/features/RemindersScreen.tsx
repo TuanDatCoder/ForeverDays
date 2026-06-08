@@ -1,11 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { useRelationship } from '../core/RelationshipContext';
-import { ReminderService } from '@forever-days/core';
-import type { Reminder } from '@forever-days/core';
+import { ReminderService, UserPushTokenService, MOCK_DAILY_WISHES } from '@forever-days/core';
+import type { Reminder, DailyWish } from '@forever-days/core';
 import { Bell, Clock, Trash2, Send, Plus, ToggleLeft, ToggleRight } from 'lucide-react';
 
+// Hàm tính wish hôm nay
+const computeTodayWish = (wishes: DailyWish[]): DailyWish | null => {
+  if (wishes.length === 0) return null;
+  const today = new Date();
+  const currentMonth = today.getMonth() + 1;
+  const currentDate = today.getDate();
+  const special = wishes.find(
+    w => w.type === 'special' && w.specialMonth === currentMonth && w.specialDay === currentDate
+  );
+  if (special) return special;
+  const daily = wishes.filter(w => w.type === 'daily');
+  if (daily.length === 0) return null;
+  const start = new Date(today.getFullYear(), 0, 0);
+  const diff = today.getTime() - start.getTime();
+  const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24));
+  return daily[dayOfYear % daily.length];
+};
+
 export const RemindersScreen: React.FC = () => {
-  const { coupleId, isDemoMode, user } = useRelationship();
+  const { coupleId, isDemoMode, user, partner } = useRelationship();
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [isOpenAddModal, setIsOpenAddModal] = useState(false);
   
@@ -14,6 +32,94 @@ export const RemindersScreen: React.FC = () => {
   const [newMessage, setNewMessage] = useState('');
   const [newTime, setNewTime] = useState('08:00');
   const [newRepeat, setNewRepeat] = useState<'once' | 'daily' | 'weekly' | 'monthly'>('daily');
+
+  // ==============================
+  // Cài đặt lời chúc ngọt ngào (Web)
+  // ==============================
+  const [wishNotifEnabled, setWishNotifEnabled] = useState(() => {
+    return localStorage.getItem('wish_notif_enabled') !== 'false';
+  });
+  const [wishMorningTime, setWishMorningTime] = useState(() => {
+    return localStorage.getItem('wish_notif_morning') || '08:00';
+  });
+  const [wishEveningTime, setWishEveningTime] = useState(() => {
+    return localStorage.getItem('wish_notif_evening') || '23:00';
+  });
+  const [wishEditMorning, setWishEditMorning] = useState(wishMorningTime);
+  const [wishEditEvening, setWishEditEvening] = useState(wishEveningTime);
+  const [isEditingWishTime, setIsEditingWishTime] = useState(false);
+
+  // Kiểm tra và gửi thông báo web đúng giờ
+  useEffect(() => {
+    if (!wishNotifEnabled) return;
+    const todayWish = computeTodayWish(MOCK_DAILY_WISHES);
+    const wishContent = todayWish?.content || 'Chúc em ngày mới tràn ngập niềm vui! ❤️';
+
+    const tryNotify = () => {
+      const now = new Date();
+      const [mH, mM] = wishMorningTime.split(':').map(Number);
+      const [eH, eM] = wishEveningTime.split(':').map(Number);
+      const morningMs = (mH * 60 + mM) * 60 * 1000;
+      const eveningMs = (eH * 60 + eM) * 60 * 1000;
+      const nowMs = (now.getHours() * 60 + now.getMinutes()) * 60 * 1000;
+
+      const todayKey = now.toISOString().split('T')[0];
+      const sentMorning = localStorage.getItem(`wish_sent_morning_${todayKey}`);
+      const sentEvening = localStorage.getItem(`wish_sent_evening_${todayKey}`);
+
+      // Sáng: có thể gửi trong khoảng ±5 phút so với giờ cài
+      if (!sentMorning && Math.abs(nowMs - morningMs) < 5 * 60 * 1000) {
+        if (Notification.permission === 'granted') {
+          new Notification('☀️ Lời chúc buổi sáng ngọt ngào!', { body: wishContent, icon: '/favicon.ico' });
+          localStorage.setItem(`wish_sent_morning_${todayKey}`, '1');
+        }
+      }
+      // Tối
+      if (!sentEvening && Math.abs(nowMs - eveningMs) < 5 * 60 * 1000) {
+        if (Notification.permission === 'granted') {
+          new Notification('🌙 Lời chúc buổi tối dịu dàng!', { body: wishContent, icon: '/favicon.ico' });
+          localStorage.setItem(`wish_sent_evening_${todayKey}`, '1');
+        }
+      }
+    };
+
+    const interval = setInterval(tryNotify, 60 * 1000); // kiểm tra mỗi phút
+    return () => clearInterval(interval);
+  }, [wishNotifEnabled, wishMorningTime, wishEveningTime]);
+
+  const handleToggleWishNotif = (enabled: boolean) => {
+    setWishNotifEnabled(enabled);
+    localStorage.setItem('wish_notif_enabled', String(enabled));
+    if (enabled) {
+      if ('Notification' in window && Notification.permission !== 'granted') {
+        Notification.requestPermission().then(p => {
+          if (p === 'granted') {
+            alert(`✅ Đã bật lời chúc ngọt ngào! Bạn sẽ nhận lời chúc lúc ${wishMorningTime} và ${wishEveningTime} mỗi ngày 💕`);
+          }
+        });
+      } else {
+        alert(`✅ Đã bật lời chúc ngọt ngào! Bạn sẽ nhận lời chúc lúc ${wishMorningTime} và ${wishEveningTime} mỗi ngày 💕`);
+      }
+    } else {
+      alert('Đã tắt thông báo lời chúc ngọt ngào.');
+    }
+  };
+
+  const handleSaveWishTime = () => {
+    const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+    if (!timeRegex.test(wishEditMorning) || !timeRegex.test(wishEditEvening)) {
+      alert('Giờ không hợp lệ! Vui lòng nhập đúng định dạng HH:MM');
+      return;
+    }
+    setWishMorningTime(wishEditMorning);
+    setWishEveningTime(wishEditEvening);
+    localStorage.setItem('wish_notif_morning', wishEditMorning);
+    localStorage.setItem('wish_notif_evening', wishEditEvening);
+    setIsEditingWishTime(false);
+    if (wishNotifEnabled) {
+      alert(`✅ Đã cập nhật! Lời chúc sẽ gửi lúc ${wishEditMorning} và ${wishEditEvening} mỗi ngày 💕`);
+    }
+  };
 
   const reminderService = new ReminderService();
 
@@ -145,6 +251,72 @@ export const RemindersScreen: React.FC = () => {
     setIsOpenAddModal(false);
   };
 
+  const sendPushNotification = async (expoPushToken: string, title: string, body: string) => {
+    if (expoPushToken.startsWith('mock-')) {
+      console.log('Gửi thông báo giả lập (Expo Go) thành công:', { title, body });
+      return;
+    }
+    const message = {
+      to: expoPushToken,
+      sound: 'default',
+      title: title,
+      body: body,
+      data: { screen: 'Reminders' },
+    };
+
+    try {
+      await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Accept-encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(message),
+      });
+    } catch (error) {
+      console.error('Lỗi gửi thông báo:', error);
+    }
+  };
+
+  const handleSendReminderPush = async (itemTitle: string, itemMessage: string) => {
+    const title = `Nhắc nhở từ ${user?.nickname || 'nửa kia'}! ⏰`;
+    const body = `[${itemTitle}]: ${itemMessage}`;
+
+    if (isDemoMode) {
+      alert('Ứng dụng đang ở chế độ Demo! Tính năng gửi thông báo nhắc nhở chỉ hoạt động ở chế độ kết nối cơ sở dữ liệu thật.');
+      triggerInstantNotification(title, body);
+      return;
+    }
+    if (!partner?.id) {
+      alert('Bạn chưa kết nối với nửa kia! Hãy ghép đôi để sử dụng tính năng này.');
+      return;
+    }
+    try {
+      const tokenService = new UserPushTokenService();
+      const partnerToken = await tokenService.fetchPushToken(partner.id);
+
+      if (partnerToken) {
+        await sendPushNotification(partnerToken, title, body);
+        if (partnerToken.startsWith('mock-')) {
+          alert(
+            `Đã gửi nhắc nhở thành công!\n\n(Do đối phương đang dùng Expo Go giả lập nên sự kiện đã được ghi nhận trên hệ thống nhưng không rung chuông vật lý).`
+          );
+        } else {
+          alert('Đã gửi nhắc nhở thành công đến đối phương! ⏰');
+        }
+      } else {
+        alert(
+          'Không tìm thấy mã đăng ký thông báo (Push Token) của đối phương!\n\n' +
+          'Lưu ý: Đối phương cần phải đăng nhập vào ứng dụng trên điện thoại ít nhất một lần để đăng ký thiết bị.'
+        );
+      }
+    } catch (err: any) {
+      console.error('Lỗi khi gửi nhắc nhở:', err);
+      alert('Đã xảy ra lỗi khi gửi nhắc nhở: ' + (err?.message || err));
+    }
+  };
+
   // Trigger web desktop alert
   const triggerInstantNotification = (title: string, body: string) => {
     if (!('Notification' in window)) {
@@ -231,7 +403,7 @@ export const RemindersScreen: React.FC = () => {
 
                     <div className="flex gap-1.5">
                       <button
-                        onClick={() => triggerInstantNotification(`Thử: ${item.title}`, item.message)}
+                        onClick={() => handleSendReminderPush(item.title, item.message)}
                         className="bg-text-primary text-bg-card font-extrabold text-[11px] border-[2.2px] border-border-color rounded-full px-2.5 py-1.5 cursor-pointer transition-all duration-100 hover:translate-x-[2px] hover:translate-y-[2px] active:translate-x-[3px] active:translate-y-[3px] select-none inline-flex items-center justify-center gap-1"
                       >
                         <Send size={12} /> Gửi thử
@@ -252,6 +424,91 @@ export const RemindersScreen: React.FC = () => {
           {/* Sidebar / Tools - Spans 1 column on desktop */}
           <div className="flex flex-col gap-6 order-1 md:order-2">
             <h3 className="text-[13px] font-extrabold text-text-secondary pl-2 mb-1 uppercase tracking-wider">Công cụ hỗ trợ</h3>
+
+            {/* ============================== */}
+            {/* Card: Cài đặt lời chúc ngọt ngào */}
+            {/* ============================== */}
+            <div className="bg-gradient-to-br from-[#fff0f5] to-[#fff6f7] border-[2.2px] border-border-color rounded-2xl p-5 shadow-neo">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="text-3xl">💌</span>
+                <div className="flex-1">
+                  <h4 className="text-[13px] font-black text-text-primary">Lời chúc ngọt ngào hàng ngày</h4>
+                  <p className="text-[10px] text-text-secondary mt-0.5 leading-snug">Nhận lời chúc yêu thương mỗi sáng & tối qua thông báo trình duyệt</p>
+                </div>
+                {/* Toggle Switch */}
+                <button
+                  onClick={() => handleToggleWishNotif(!wishNotifEnabled)}
+                  className={`relative inline-flex items-center w-11 h-6 rounded-full border-[2px] border-border-color transition-colors duration-200 flex-shrink-0 ${
+                    wishNotifEnabled ? 'bg-primary-coral' : 'bg-text-secondary/30'
+                  }`}
+                >
+                  <span className={`inline-block w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${
+                    wishNotifEnabled ? 'translate-x-[22px]' : 'translate-x-[2px]'
+                  }`} />
+                </button>
+              </div>
+
+              {/* Hiển thị giờ */}
+              <div className={`flex items-center gap-2 bg-white border-[1.8px] border-border-color rounded-xl p-3 mb-3 transition-opacity ${
+                wishNotifEnabled ? 'opacity-100' : 'opacity-40 pointer-events-none'
+              }`}>
+                <div className="flex-1 text-center">
+                  <p className="text-[9px] font-black text-text-secondary uppercase tracking-widest">☀️ Buổi sáng</p>
+                  <p className="text-xl font-black text-text-primary mt-0.5">{wishMorningTime}</p>
+                </div>
+                <div className="w-px h-8 bg-border-color opacity-30" />
+                <div className="flex-1 text-center">
+                  <p className="text-[9px] font-black text-text-secondary uppercase tracking-widest">🌙 Buổi tối</p>
+                  <p className="text-xl font-black text-text-primary mt-0.5">{wishEveningTime}</p>
+                </div>
+                <button
+                  onClick={() => { setWishEditMorning(wishMorningTime); setWishEditEvening(wishEveningTime); setIsEditingWishTime(true); }}
+                  className="ml-1 bg-bg-primary border-[1.8px] border-border-color rounded-lg px-2.5 py-1.5 text-[10px] font-black text-text-primary hover:bg-primary-coral/10 transition-colors"
+                >
+                  ✏️ Sửa
+                </button>
+              </div>
+
+              {/* Modal chỉnh giờ (Inline) */}
+              {isEditingWishTime && (
+                <div className="bg-bg-primary border-[2px] border-primary-coral/40 rounded-xl p-4 mb-3 flex flex-col gap-3">
+                  <p className="text-[11px] font-black text-text-primary">⏰ Chỉnh giờ gửi lời chúc</p>
+                  <div>
+                    <label className="block text-[10px] font-black text-text-secondary uppercase mb-1">☀️ Giờ buổi sáng</label>
+                    <input
+                      type="time"
+                      value={wishEditMorning}
+                      onChange={e => setWishEditMorning(e.target.value)}
+                      className="bg-white border-[2px] border-border-color rounded-lg px-3 py-2 text-sm font-bold w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-text-secondary uppercase mb-1">🌙 Giờ buổi tối</label>
+                    <input
+                      type="time"
+                      value={wishEditEvening}
+                      onChange={e => setWishEditEvening(e.target.value)}
+                      className="bg-white border-[2px] border-border-color rounded-lg px-3 py-2 text-sm font-bold w-full"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setIsEditingWishTime(false)}
+                      className="flex-1 py-2 text-xs font-black border-[2px] border-border-color rounded-xl text-text-secondary"
+                    >Hủy</button>
+                    <button
+                      onClick={handleSaveWishTime}
+                      className="flex-1 py-2 text-xs font-black bg-primary-coral text-white border-[2px] border-border-color rounded-xl"
+                    >Lưu</button>
+                  </div>
+                </div>
+              )}
+
+              <p className="text-[9px] text-text-secondary leading-snug">
+                💡 Web sẽ gửi thông báo khi bạn đang mở tab trình duyệt. Hãy bật quyền thông báo trong trình duyệt nhé!
+              </p>
+            </div>
+
             {/* Instant Notification Tester */}
             <div className="bg-bg-card border-[2.2px] border-border-color rounded-2xl p-5 shadow-neo flex flex-col gap-4">
               <div className="flex items-center gap-3.5">

@@ -148,6 +148,54 @@ export interface DiaryMedia {
   createdAt?: string;
 }
 
+export interface PartnerProfileNote {
+  id: string;
+  coupleId: string;
+  writerId: string;
+  targetId: string;
+  height?: string;
+  weight?: string;
+  hobbies?: string;
+  personality?: string;
+  isShared: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CoupleEvent {
+  id: string;
+  coupleId: string;
+  createdBy?: string;
+  title: string;
+  eventDate: string; // YYYY-MM-DD
+  eventTime?: string; // HH:mm:ss
+  location?: string;
+  description?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UserMoodLog {
+  id: string;
+  userId: string;
+  coupleId: string;
+  moodType: string;
+  note?: string;
+  isShared: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CoupleCountdownCustomization {
+  id: string;
+  coupleId: string;
+  customAvatar1Url?: string | null;
+  customAvatar2Url?: string | null;
+  backgroundUrl?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 // -------------------------------------------------------------
 // Database Mapping Utilities (Snake Case to Camel Case & vice-versa)
 // -------------------------------------------------------------
@@ -435,3 +483,177 @@ export function mapWidgetSettingToDb(setting: Partial<WidgetSetting>): any {
     text_size: setting.textSize,
   };
 }
+
+export function mapPartnerProfileNoteFromDb(row: any): PartnerProfileNote {
+  return {
+    id: row.id,
+    coupleId: row.couple_id,
+    writerId: row.writer_id,
+    targetId: row.target_id,
+    height: row.height,
+    weight: row.weight,
+    hobbies: row.hobbies,
+    personality: row.personality,
+    isShared: row.is_shared ?? false,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function mapPartnerProfileNoteToDb(note: Partial<PartnerProfileNote>): any {
+  return {
+    id: note.id,
+    couple_id: note.coupleId,
+    writer_id: note.writerId,
+    target_id: note.targetId,
+    height: note.height,
+    weight: note.weight,
+    hobbies: note.hobbies,
+    personality: note.personality,
+    is_shared: note.isShared,
+  };
+}
+
+export function mapCoupleEventFromDb(row: any): CoupleEvent {
+  return {
+    id: row.id,
+    coupleId: row.couple_id,
+    createdBy: row.created_by,
+    title: row.title,
+    eventDate: row.event_date,
+    eventTime: row.event_time,
+    location: row.location,
+    description: row.description,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function mapCoupleEventToDb(event: Partial<CoupleEvent>): any {
+  return {
+    id: event.id,
+    couple_id: event.coupleId,
+    created_by: event.createdBy,
+    title: event.title,
+    event_date: event.eventDate,
+    event_time: event.eventTime,
+    location: event.location,
+    description: event.description,
+  };
+}
+
+export function mapUserMoodLogFromDb(row: any): UserMoodLog {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    coupleId: row.couple_id,
+    moodType: row.mood_type,
+    note: row.note,
+    isShared: row.is_shared ?? false,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function mapUserMoodLogToDb(log: Partial<UserMoodLog>): any {
+  return {
+    id: log.id,
+    user_id: log.userId,
+    couple_id: log.coupleId,
+    mood_type: log.moodType,
+    note: log.note,
+    is_shared: log.isShared,
+  };
+}
+
+export function mapCoupleCountdownCustomizationFromDb(row: any): CoupleCountdownCustomization {
+  return {
+    id: row.id,
+    coupleId: row.couple_id,
+    customAvatar1Url: row.custom_avatar_1_url,
+    customAvatar2Url: row.custom_avatar_2_url,
+    backgroundUrl: row.background_url,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function mapCoupleCountdownCustomizationToDb(customization: Partial<CoupleCountdownCustomization>): any {
+  return {
+    id: customization.id,
+    couple_id: customization.coupleId,
+    custom_avatar_1_url: customization.customAvatar1Url === undefined ? null : customization.customAvatar1Url,
+    custom_avatar_2_url: customization.customAvatar2Url === undefined ? null : customization.customAvatar2Url,
+    background_url: customization.backgroundUrl === undefined ? null : customization.backgroundUrl,
+  };
+}
+
+export interface MilestonePlan {
+  id?: string;
+  coupleId: string;
+  milestoneId?: string;
+  milestoneTitle: string;
+  category: 'go' | 'eat' | 'play';
+  content: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export function mapMilestonePlanFromDb(row: any): MilestonePlan {
+  return {
+    id: row.id,
+    coupleId: row.couple_id,
+    milestoneId: row.milestone_id,
+    milestoneTitle: row.milestone_title,
+    category: row.category,
+    content: row.content,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function mapMilestonePlanToDb(plan: Partial<MilestonePlan>): any {
+  return {
+    id: plan.id,
+    couple_id: plan.coupleId,
+    milestone_id: plan.milestoneId,
+    milestone_title: plan.milestoneTitle,
+    category: plan.category,
+    content: plan.content,
+  };
+}
+
+export interface DailyWish {
+  id?: string;
+  content: string;
+  type: 'daily' | 'special';
+  specialMonth?: number;
+  specialDay?: number;
+  specialEvent?: string;
+  createdAt?: string;
+}
+
+export function mapDailyWishFromDb(row: any): DailyWish {
+  return {
+    id: row.id,
+    content: row.content,
+    type: row.type || 'daily',
+    specialMonth: row.special_month,
+    specialDay: row.special_day,
+    specialEvent: row.special_event,
+    createdAt: row.created_at,
+  };
+}
+
+export function mapDailyWishToDb(wish: Partial<DailyWish>): any {
+  return {
+    id: wish.id,
+    content: wish.content,
+    type: wish.type,
+    special_month: wish.specialMonth,
+    special_day: wish.specialDay,
+    special_event: wish.specialEvent,
+  };
+}
+
+
