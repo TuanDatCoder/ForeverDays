@@ -9,7 +9,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#fadce6"
+      "backgroundColor": "#ffc0d4"
     },
     "userInterfaceStyle": "light",
     "ios": {
@@ -18,7 +18,7 @@
     "android": {
       "package": "com.foreverdays.app",
       "adaptiveIcon": {
-        "backgroundColor": "#fadce6",
+        "backgroundColor": "#ffc0d4",
         "foregroundImage": "./assets/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false
