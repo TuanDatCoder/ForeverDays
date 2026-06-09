@@ -1,6 +1,5 @@
 {
   "expo": {
-    "entryPoint": "./index.ts",
     "name": "ForeverDays",
     "slug": "mobile",
     "version": "1.0.0",
@@ -9,7 +8,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffc0d4"
+      "backgroundColor": "#fde3ec"
     },
     "userInterfaceStyle": "light",
     "ios": {
@@ -18,13 +17,17 @@
     "android": {
       "package": "com.foreverdays.app",
       "adaptiveIcon": {
-        "backgroundColor": "#ffc0d4",
+        "backgroundColor": "#fde3ec",
         "foregroundImage": "./assets/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "notification": {
+      "icon": "./assets/android-icon-monochrome.png",
+      "color": "#ff6584"
     },
     "plugins": [
       [

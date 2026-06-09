@@ -44,3 +44,9 @@ npm run core:build
 npm run core:build
 npm run web:build
 ```
+
+### Build Android APK (Preview)
+```bash
+cd apps/mobile
+eas build --platform android --profile preview
+```
