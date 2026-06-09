@@ -351,14 +351,7 @@ export const RemindersScreen: React.FC = () => {
 
       if (partnerToken) {
         await sendPushNotification(partnerToken, title, body);
-        if (partnerToken.startsWith('mock-')) {
-          Alert.alert(
-            'Thành công (Giả lập)',
-            'Đã gửi nhắc nhở thành công!\n\n(Do đối phương đang dùng Expo Go giả lập nên sự kiện đã được ghi nhận trên hệ thống nhưng không rung chuông vật lý).'
-          );
-        } else {
-          Alert.alert('Thành công', 'Đã gửi nhắc nhở thành công đến đối phương! ⏰');
-        }
+        Alert.alert('Thành công', 'Đã gửi nhắc nhở thành công đến đối phương! ⏰');
       } else {
         Alert.alert(
           'Không tìm thấy Token',

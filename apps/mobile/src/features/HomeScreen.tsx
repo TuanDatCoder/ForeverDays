@@ -114,14 +114,7 @@ export const HomeScreen: React.FC = () => {
 
       if (partnerToken) {
         await sendPushNotification(partnerToken, title, body);
-        if (partnerToken.startsWith('mock-')) {
-          Alert.alert(
-            'Thành công (Giả lập)',
-            'Đã gửi tín hiệu thành công!\n\n(Do đối phương đang dùng Expo Go giả lập nên sự kiện đã được ghi nhận trên hệ thống nhưng không rung chuông vật lý).'
-          );
-        } else {
-          Alert.alert('Thành công', type === 'love' ? 'Đã gửi yêu thương thành công đến đối phương! 💕' : 'Đã chọc ghẹo đối phương thành công! 🤪');
-        }
+        Alert.alert('Thành công', type === 'love' ? 'Đã gửi yêu thương thành công đến đối phương! 💕' : 'Đã chọc ghẹo đối phương thành công! 🤪');
       } else {
         Alert.alert(
           'Không tìm thấy Token',
@@ -841,7 +834,7 @@ export const HomeScreen: React.FC = () => {
                         flexShrink: 0,
                       }}
                     >
-                      <Text numberOfLines={1} ellipsizeMode="clip" style={{ fontSize: 11, fontWeight: '900', color: AppTheme.textPrimary }}>❤️ Nhớ nửa kia</Text>
+                      <Text style={{ fontSize: 11, fontWeight: '900', color: AppTheme.textPrimary }}>❤️ Nhớ nửa kia</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => handleSendLoveOrPoke('poke')}
@@ -862,7 +855,7 @@ export const HomeScreen: React.FC = () => {
                         flexShrink: 0,
                       }}
                     >
-                      <Text numberOfLines={1} ellipsizeMode="clip" style={{ fontSize: 11, fontWeight: '900', color: AppTheme.textPrimary }}>🤪 Chọc ghẹo</Text>
+                      <Text style={{ fontSize: 11, fontWeight: '900', color: AppTheme.textPrimary }}>🤪 Chọc ghẹo</Text>
                     </TouchableOpacity>
                   </View>
                 </ImageBackground>
@@ -898,7 +891,7 @@ export const HomeScreen: React.FC = () => {
                         flexShrink: 0,
                       }}
                     >
-                      <Text numberOfLines={1} ellipsizeMode="clip" style={{ fontSize: 11, fontWeight: '900', color: AppTheme.textPrimary }}>❤️ Nhớ nửa kia</Text>
+                      <Text style={{ fontSize: 11, fontWeight: '900', color: AppTheme.textPrimary }}>❤️ Nhớ nửa kia</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => handleSendLoveOrPoke('poke')}
@@ -919,7 +912,7 @@ export const HomeScreen: React.FC = () => {
                         flexShrink: 0,
                       }}
                     >
-                      <Text numberOfLines={1} ellipsizeMode="clip" style={{ fontSize: 11, fontWeight: '900', color: AppTheme.textPrimary }}>🤪 Chọc ghẹo</Text>
+                      <Text style={{ fontSize: 11, fontWeight: '900', color: AppTheme.textPrimary }}>🤪 Chọc ghẹo</Text>
                     </TouchableOpacity>
                   </View>
                 </>
