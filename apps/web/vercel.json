@@ -1,0 +1,5 @@
+{
+  "version": 2,
+  "buildCommand": "cd ../.. && npm run core:build && npm run web:build",
+  "outputDirectory": "dist"
+}

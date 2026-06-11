@@ -1,7 +1,0 @@
-{
-  "version": 2,
-  "buildCommand": "npm run core:build && npm run build --workspace=@forever-days/web",
-  "outputDirectory": "apps/web/dist",
-  "installCommand": "npm install",
-  "framework": "vite"
-}
