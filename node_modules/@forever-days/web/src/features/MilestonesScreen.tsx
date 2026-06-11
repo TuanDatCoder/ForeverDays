@@ -737,7 +737,16 @@ export const MilestonesScreen: React.FC = () => {
     const groups: Record<number, { location: TravelLocation, trips: TravelTrip[] }> = {};
     filteredSortedTrips.forEach(t => {
       if (!groups[t.location_id]) {
-        groups[t.location_id] = { location: t.location, trips: [] };
+        groups[t.location_id] = { 
+          location: t.location || { 
+            id: t.location_id, 
+            name: 'Unknown Location', 
+            type: 'province', 
+            country: '', 
+            image_url: '' 
+          }, 
+          trips: [] 
+        };
       }
       groups[t.location_id].trips.push(t);
     });
@@ -1680,11 +1689,11 @@ export const MilestonesScreen: React.FC = () => {
                 <label className="block text-[11px] font-extrabold text-text-secondary uppercase mb-1.5 ml-1">Địa điểm <span className="text-warning-coral">*</span></label>
                 <CustomDropdown
                   value={tripLocationId}
-                  onChange={(val: any) => setTripLocationId(val ? Number(val) : null)}
+                  onChange={(val: any) => setTripLocationId(val ? Number(val) : '')}
                   icon={MapPin}
                   fullWidth={true}
                   options={[
-                    { value: null, label: '-- Chọn địa điểm du lịch --' },
+                    { value: '', label: '-- Chọn địa điểm du lịch --' },
                     ...locations.filter(l => l.type === 'province').map(l => ({ value: l.id, label: `${l.name}` })),
                     ...locations.filter(l => l.type === 'country').map(l => ({ value: l.id, label: `${l.name}` }))
                   ]}
