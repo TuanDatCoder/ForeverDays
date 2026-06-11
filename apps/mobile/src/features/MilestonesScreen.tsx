@@ -11,6 +11,8 @@ import {
   MapPin, Plane, Globe, Pencil
 } from 'lucide-react-native';
 import * as ExpoCalendar from 'expo-calendar';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { LoveUtils, MilestoneItem } from '../core/loveUtils';
 
@@ -30,13 +32,17 @@ const T = {
   bw: 2.2,
 };
 
-// ─── Pill Tab ─────────────────────────────────────────────────────────────────
+// ─── Pill Tab (inline styles to avoid forward-reference of `styles`) ──────────
+const pillTabBase = { flex: 1, paddingVertical: 10, borderRadius: 12, borderWidth: 2.2, alignItems: 'center' as const, justifyContent: 'center' as const };
 const PillTab: React.FC<{ label: string; active: boolean; onPress: () => void }> = ({ label, active, onPress }) => (
   <TouchableOpacity
     onPress={onPress}
-    style={[styles.pillTab, active ? styles.pillTabActive : styles.pillTabInactive]}
+    style={[pillTabBase, active
+      ? { backgroundColor: '#ff6584', borderColor: '#3d2f3d', shadowColor: '#3d2f3d', shadowOffset: { width: 3, height: 3 }, shadowOpacity: 1, shadowRadius: 0, elevation: 3 }
+      : { backgroundColor: '#fff6f7', borderColor: 'rgba(61,47,61,0.25)' }
+    ]}
   >
-    <Text style={[styles.pillTabText, active ? styles.pillTabTextActive : styles.pillTabTextInactive]}>
+    <Text style={{ fontSize: 12, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.3, color: active ? '#3d2f3d' : '#856a85' }}>
       {label}
     </Text>
   </TouchableOpacity>
@@ -83,8 +89,24 @@ export const MilestonesScreen: React.FC = () => {
   const [tripDescription, setTripDescription] = useState('');
   const [tripFilter, setTripFilter] = useState<'all' | 'domestic' | 'international'>('all');
   const [tripSort, setTripSort] = useState<'desc' | 'asc'>('desc');
+  const [tripViewMode, setTripViewMode] = useState<'list' | 'group'>('list');
   const [editingTripId, setEditingTripId] = useState<string | null>(null);
+  const [tripToDelete, setTripToDelete] = useState<string | null>(null);
   const [isOpenLocationPicker, setIsOpenLocationPicker] = useState(false);
+  const [showTripStartDatePicker, setShowTripStartDatePicker] = useState(false);
+  const [showTripEndDatePicker, setShowTripEndDatePicker] = useState(false);
+  const [isSyncMode, setIsSyncMode] = useState(false);
+  const [selectedForSync, setSelectedForSync] = useState<string[]>([]);
+  const [syncedEvents, setSyncedEvents] = useState<Record<string, any>>({});
+
+  const loadSyncedEvents = async () => {
+    try {
+      const stored = await AsyncStorage.getItem('synced_calendar_events');
+      if (stored) {
+        setSyncedEvents(JSON.parse(stored));
+      }
+    } catch {}
+  };
 
   // ── UI state ─────────────────────────────────────────────────────────────────
   const [isSyncing, setIsSyncing] = useState(false);
@@ -99,6 +121,12 @@ export const MilestonesScreen: React.FC = () => {
   const travelService = new TravelService();
 
   const getMilestoneKey = (item: MilestoneItem) => item.id || item.title;
+
+  const toggleSyncSelection = (key: string) => {
+    setSelectedForSync(prev => 
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    );
+  };
 
   // ── Loading animation ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -145,22 +173,63 @@ export const MilestonesScreen: React.FC = () => {
     } catch {}
   };
 
+  const cleanupOldEvents = async (events: CoupleEvent[]) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const cutoffTime = today.getTime() - (3 * 24 * 60 * 60 * 1000); // 3 days ago
+
+    const validEvents: CoupleEvent[] = [];
+    const eventsToDelete: string[] = [];
+    
+    for (const event of events) {
+      if (!event.eventDate) {
+        validEvents.push(event);
+        continue;
+      }
+      const eventDate = new Date(event.eventDate);
+      eventDate.setHours(0, 0, 0, 0);
+      if (eventDate.getTime() <= cutoffTime) {
+        eventsToDelete.push(event.id!);
+      } else {
+        validEvents.push(event);
+      }
+    }
+
+    if (eventsToDelete.length > 0) {
+      if (isDemoMode) {
+        demoStorage['demo_couple_events'] = JSON.stringify(validEvents);
+      } else {
+        for (const id of eventsToDelete) {
+          try { await eventService.deleteEvent(id); } catch {}
+        }
+      }
+    }
+    return validEvents;
+  };
+
   const loadCoupleEvents = async () => {
+    let loadedEvents: CoupleEvent[] = [];
     if (isDemoMode) {
       const saved = demoStorage['demo_couple_events'];
+      let parsed = [];
       if (saved) {
-        try { setCoupleEvents(JSON.parse(saved)); } catch {}
-      } else {
-        const defaultEvents: CoupleEvent[] = [
-          { id: 'e-1', coupleId: 'demo-couple-id', title: 'Hẹn hò xem phim', eventDate: '2026-06-07', eventTime: '19:00', location: 'CGV Vincom', description: 'Xem phim Doraemon mới ra rạp, sau đó đi ăn kem bơ.', createdAt: new Date().toISOString() }
-        ];
-        setCoupleEvents(defaultEvents);
-        demoStorage['demo_couple_events'] = JSON.stringify(defaultEvents);
+        try { parsed = JSON.parse(saved); } catch {}
       }
-      return;
+      if (parsed.length > 0) {
+        loadedEvents = parsed;
+      } else {
+        loadedEvents = [
+          { id: 'e-1', coupleId: 'demo-couple-id', title: 'Hẹn hò xem phim', eventDate: new Date().toISOString().split('T')[0], eventTime: '19:00', location: 'CGV Vincom', description: 'Xem phim Doraemon mới ra rạp, sau đó đi ăn kem bơ.', createdAt: new Date().toISOString() }
+        ];
+        demoStorage['demo_couple_events'] = JSON.stringify(loadedEvents);
+      }
+    } else {
+      if (!coupleId) return;
+      try { loadedEvents = await eventService.fetchEvents(coupleId); } catch {}
     }
-    if (!coupleId) return;
-    try { setCoupleEvents(await eventService.fetchEvents(coupleId)); } catch {}
+    
+    loadedEvents = await cleanupOldEvents(loadedEvents);
+    setCoupleEvents(loadedEvents);
   };
 
   const loadPlans = async () => {
@@ -186,34 +255,40 @@ export const MilestonesScreen: React.FC = () => {
   };
 
   const loadTravelData = async () => {
-    if (isDemoMode) {
-      const mockLocations: TravelLocation[] = [
-        { id: 1, name: 'Đà Lạt', type: 'province', country: 'Việt Nam', image_url: 'https://images.unsplash.com/photo-1517427677505-610b42f1a601?auto=format&fit=crop&q=80&w=800' },
-        { id: 2, name: 'Hà Nội', type: 'province', country: 'Việt Nam', image_url: 'https://images.unsplash.com/photo-1555921015-5532091f6026?auto=format&fit=crop&q=80&w=800' },
-        { id: 3, name: 'Thái Lan', type: 'country', country: 'Thái Lan', image_url: 'https://images.unsplash.com/photo-1552465011-b4e21bf6e79a?auto=format&fit=crop&q=80&w=800' },
-      ];
-      setLocations(mockLocations);
-      const saved = demoStorage['demo_travel_trips'];
-      if (saved) {
-        try { setTrips(JSON.parse(saved)); } catch {}
-      } else {
-        const mockTrips: TravelTrip[] = [{
-          id: 'trip-1', couple_id: 'demo-couple-id', location_id: 1, title: 'Nghỉ dưỡng Đà Lạt 3N2Đ',
-          start_date: new Date(Date.now() - 5 * 86400000).toISOString().split('T')[0],
-          end_date: new Date(Date.now() - 2 * 86400000).toISOString().split('T')[0],
-          description: 'Đi ăn lẩu bò, đi săn mây', location: mockLocations[0],
-        }];
-        setTrips(mockTrips);
-        demoStorage['demo_travel_trips'] = JSON.stringify(mockTrips);
-      }
-      return;
-    }
     try {
-      const locs = await travelService.fetchLocations();
-      setLocations(locs);
-      if (coupleId) setTrips(await travelService.fetchTrips(coupleId));
+      if (isDemoMode) {
+        const mockLocations: TravelLocation[] = [
+          { id: 1, name: 'Đà Lạt', type: 'province', country: 'Việt Nam', image_url: 'https://images.unsplash.com/photo-1517427677505-610b42f1a601?auto=format&fit=crop&q=80&w=800' },
+          { id: 2, name: 'Hà Nội', type: 'province', country: 'Việt Nam', image_url: 'https://images.unsplash.com/photo-1555921015-5532091f6026?auto=format&fit=crop&q=80&w=800' },
+          { id: 3, name: 'Thái Lan', type: 'country', country: 'Thái Lan', image_url: 'https://images.unsplash.com/photo-1552465011-b4e21bf6e79a?auto=format&fit=crop&q=80&w=800' },
+        ];
+        setLocations(mockLocations);
+        const saved = demoStorage['demo_travel_trips'];
+        let loadedTrips: TravelTrip[] = [];
+        if (saved) {
+          try { loadedTrips = JSON.parse(saved); } catch {}
+        }
+        if (loadedTrips.length === 0) {
+          loadedTrips = [{
+            id: 'trip-1', couple_id: 'demo-couple-id', location_id: 1, title: 'Nghỉ dưỡng Đà Lạt 3N2Đ',
+            start_date: new Date(Date.now() - 5 * 86400000).toISOString().split('T')[0],
+            end_date: new Date(Date.now() - 2 * 86400000).toISOString().split('T')[0],
+            description: 'Đi ăn lẩu bò, đi săn mây', location: mockLocations[0],
+          }];
+          demoStorage['demo_travel_trips'] = JSON.stringify(loadedTrips);
+        }
+        setTrips(loadedTrips);
+      } else {
+        const locs = await travelService.fetchLocations();
+        setLocations(locs);
+        if (coupleId) {
+          const dbTrips = await travelService.fetchTrips(coupleId);
+          setTrips(dbTrips);
+        }
+      }
     } catch {}
   };
+
 
   useEffect(() => {
     if (isReady) {
@@ -221,6 +296,7 @@ export const MilestonesScreen: React.FC = () => {
       loadCoupleEvents();
       loadPlans();
       loadTravelData();
+      loadSyncedEvents();
     }
   }, [coupleId, isDemoMode, isReady]);
 
@@ -331,6 +407,23 @@ export const MilestonesScreen: React.FC = () => {
     setIsOpenAddTripModal(true);
   };
 
+  const confirmDeleteTrip = async () => {
+    if (!tripToDelete) return;
+    if (isDemoMode) {
+      const updatedList = trips.filter(t => t.id !== tripToDelete);
+      setTrips(updatedList);
+      demoStorage['demo_travel_trips'] = JSON.stringify(updatedList);
+    } else {
+      await travelService.deleteTrip(tripToDelete);
+      await loadTravelData();
+    }
+    setTripToDelete(null);
+  };
+
+  const handleDeleteTrip = (id: string) => {
+    setTripToDelete(id);
+  };
+
   const handleAddTrip = async () => {
     if (!tripTitle.trim() || !tripStartDate || !tripEndDate || !tripLocationId) {
       Alert.alert('Lỗi', 'Vui lòng điền đầy đủ tiêu đề, địa điểm và ngày.');
@@ -358,27 +451,89 @@ export const MilestonesScreen: React.FC = () => {
     setIsAddingTrip(false);
   };
 
-  const handleDeleteTrip = (id: string) => {
-    Alert.alert('Xác nhận', 'Xóa chuyến đi này?', [
-      { text: 'Hủy', style: 'cancel' },
-      {
-        text: 'Xóa', style: 'destructive', onPress: async () => {
-          if (isDemoMode) {
-            const updatedList = trips.filter(t => t.id !== id);
-            setTrips(updatedList);
-            demoStorage['demo_travel_trips'] = JSON.stringify(updatedList);
-          } else { await travelService.deleteTrip(id); await loadTravelData(); }
-        }
-      }
-    ]);
-  };
+
 
   // ── Calendar helpers ─────────────────────────────────────────────────────────
   const handleSyncCalendar = async () => {
+    if (!isSyncMode) {
+      setIsSyncMode(true);
+      return;
+    }
+    
+    if (selectedForSync.length === 0) {
+      setIsSyncMode(false);
+      return;
+    }
+
     setIsSyncing(true);
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setIsSyncing(false);
-    setShowSyncSuccess(true);
+
+    try {
+      const { status } = await ExpoCalendar.requestCalendarPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Quyền lịch bị từ chối', 'Ứng dụng cần quyền truy cập lịch để đồng bộ tự động.');
+        setIsSyncing(false);
+        return;
+      }
+
+      let defaultCalendarId: string | null = null;
+      if (Platform.OS === 'ios') {
+        const cal = await ExpoCalendar.getDefaultCalendarAsync();
+        defaultCalendarId = cal ? cal.id : null;
+      } else {
+        const cals = await ExpoCalendar.getCalendarsAsync(ExpoCalendar.EntityTypes.EVENT);
+        const target = cals.find(c => c.isPrimary) || cals.find(c => c.allowsModifications) || cals[0];
+        defaultCalendarId = target ? target.id : null;
+      }
+
+      if (!defaultCalendarId) {
+        throw new Error('No writable calendar found');
+      }
+
+      const stored = await AsyncStorage.getItem('synced_calendar_events');
+      const syncedMap = stored ? JSON.parse(stored) : {};
+
+      for (const mKey of selectedForSync) {
+        const item = upcoming.find(m => getMilestoneKey(m) === mKey);
+        if (!item) continue;
+
+        const parts = item.targetDate.split('-');
+        const y = parseInt(parts[0]), m = parseInt(parts[1]) - 1, d = parseInt(parts[2]);
+        const startDate = new Date(Date.UTC(y, m, d));
+        const endDate = new Date(Date.UTC(y, m, d + 1));
+        const details = {
+          title: item.title,
+          startDate,
+          endDate,
+          allDay: true,
+          timeZone: 'UTC'
+        };
+
+        const existingEventId = syncedMap[mKey];
+        if (existingEventId) {
+          try {
+            await ExpoCalendar.updateEventAsync(existingEventId, details);
+          } catch {
+            const newEventId = await ExpoCalendar.createEventAsync(defaultCalendarId, details);
+            syncedMap[mKey] = newEventId;
+          }
+        } else {
+          const newEventId = await ExpoCalendar.createEventAsync(defaultCalendarId, details);
+          syncedMap[mKey] = newEventId;
+        }
+      }
+
+      await AsyncStorage.setItem('synced_calendar_events', JSON.stringify(syncedMap));
+      await loadSyncedEvents();
+
+      setIsSyncMode(false);
+      setSelectedForSync([]);
+      setShowSyncSuccess(true);
+    } catch (err) {
+      console.error(err);
+      Alert.alert('Lỗi đồng bộ', 'Không thể đồng bộ các cột mốc vào lịch.');
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const getGoogleCalendarUrl = (title: string, dateStr: string) => {
@@ -456,52 +611,7 @@ export const MilestonesScreen: React.FC = () => {
     return diff === 1 ? '(Trong ngày)' : `(${diff} ngày ${diff - 1} đêm)`;
   };
 
-  // ── Computed ──────────────────────────────────────────────────────────────────
-  const systemItems = useMemo(() => anniversaryDate ? LoveUtils.generateSystemMilestones(anniversaryDate) : [], [anniversaryDate]);
-  const allMilestones = useMemo(() => [...systemItems, ...customMilestones], [systemItems, customMilestones]);
-  const upcoming = useMemo(() => allMilestones.filter(m => !m.isPassed).sort((a, b) => new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime()), [allMilestones]);
-  const passed = useMemo(() => allMilestones.filter(m => m.isPassed).sort((a, b) => new Date(b.targetDate).getTime() - new Date(a.targetDate).getTime()), [allMilestones]);
-
-  const travelStats = useMemo(() => ({
-    totalTrips: trips.length,
-    uniqueLocations: new Set(trips.map(t => t.location_id)).size,
-    domesticCount: new Set(trips.filter(t => t.location?.type === 'province').map(t => t.location_id)).size,
-    internationalCount: new Set(trips.filter(t => t.location?.type === 'country').map(t => t.location_id)).size,
-  }), [trips]);
-
-  const filteredSortedTrips = useMemo(() => {
-    let f = trips.filter(t => {
-      if (tripFilter === 'domestic') return t.location?.type === 'province';
-      if (tripFilter === 'international') return t.location?.type === 'country';
-      return true;
-    });
-    f.sort((a, b) => {
-      const ta = new Date(a.start_date).getTime(), tb = new Date(b.start_date).getTime();
-      return tripSort === 'desc' ? tb - ta : ta - tb;
-    });
-    return f;
-  }, [trips, tripFilter, tripSort]);
-
-  const selectedLocation = locations.find(l => l.id === Number(tripLocationId));
-
-  // ── Loading screen ────────────────────────────────────────────────────────────
-  if (!isReady) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Cột mốc kỷ niệm</Text>
-        </View>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 }}>
-          <Animated.View style={{ transform: [{ scale: pulseScale }] }}>
-            <Heart size={54} color="#ff6584" fill="#ff6584" />
-          </Animated.View>
-          <Text style={{ fontSize: 13, fontWeight: '800', color: T.textSecondary }}>Đang tải...</Text>
-        </View>
-      </View>
-    );
-  }
-
-  // ── Milestone item renderer ───────────────────────────────────────────────────
+  // ── Render Milestone Item ───────────────────────────────────────────────────
   const renderMilestoneItem = (item: MilestoneItem, idx: number, isPast: boolean) => {
     const mKey = getMilestoneKey(item);
     const isExpanded = expandedKey === mKey;
@@ -512,9 +622,34 @@ export const MilestonesScreen: React.FC = () => {
     return (
       <View key={`${isPast ? 'pass' : 'up'}-${idx}`} style={[styles.itemCard, isPast && styles.passedItemCard, { flexDirection: 'column', alignItems: 'stretch' }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          {isSyncMode && !isPast && (
+            <TouchableOpacity 
+              onPress={() => toggleSyncSelection(mKey)}
+              style={{
+                marginRight: 10,
+                width: 20,
+                height: 20,
+                borderRadius: 4,
+                borderWidth: 2,
+                borderColor: T.coral,
+                backgroundColor: selectedForSync.includes(mKey) ? T.coral : 'transparent',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              {selectedForSync.includes(mKey) && (
+                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '900' }}>✓</Text>
+              )}
+            </TouchableOpacity>
+          )}
           <View style={{ flex: 1, paddingRight: 6 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-              <Text style={[styles.itemTitle, isPast && styles.passedTitle]}>{item.title}</Text>
+              <Text style={[styles.itemTitle, isPast && styles.passedTitle, { flexShrink: 1 }]}>{item.title}</Text>
+              {syncedEvents[mKey] && (
+                <View style={{ backgroundColor: 'rgba(0,184,148,0.1)', borderWidth: 1, borderColor: 'rgba(0,184,148,0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 }}>
+                  <Text style={{ fontSize: 9, fontWeight: '800', color: T.mint }}>📅 Đã đồng bộ</Text>
+                </View>
+              )}
               {item.yearLabel && (
                 <View style={isPast ? styles.yearBadgePassed : styles.yearBadge}>
                   <Text style={isPast ? styles.yearBadgeTextPassed : styles.yearBadgeText}>{item.yearLabel}</Text>
@@ -676,6 +811,46 @@ export const MilestonesScreen: React.FC = () => {
     );
   };
 
+  // ── Computed ──────────────────────────────────────────────────────────────────
+  const systemItems = useMemo(() => anniversaryDate ? LoveUtils.generateSystemMilestones(anniversaryDate) : [], [anniversaryDate]);
+  const allMilestones = useMemo(() => [...systemItems, ...customMilestones], [systemItems, customMilestones]);
+  const upcoming = useMemo(() => allMilestones.filter(m => !m.isPassed).sort((a, b) => new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime()), [allMilestones]);
+  const passed = useMemo(() => allMilestones.filter(m => m.isPassed).sort((a, b) => new Date(b.targetDate).getTime() - new Date(a.targetDate).getTime()), [allMilestones]);
+
+  const travelStats = useMemo(() => ({
+    totalTrips: trips.length,
+    uniqueLocations: new Set(trips.map(t => t.location_id)).size,
+    domesticCount: new Set(trips.filter(t => t.location?.type === 'province').map(t => t.location_id)).size,
+    internationalCount: new Set(trips.filter(t => t.location?.type === 'country').map(t => t.location_id)).size,
+  }), [trips]);
+
+  const filteredSortedTrips = useMemo(() => {
+    let f = trips.filter(t => {
+      if (tripFilter === 'domestic') return t.location?.type === 'province';
+      if (tripFilter === 'international') return t.location?.type === 'country';
+      return true;
+    });
+    f.sort((a, b) => {
+      const ta = new Date(a.start_date).getTime(), tb = new Date(b.start_date).getTime();
+      return tripSort === 'desc' ? tb - ta : ta - tb;
+    });
+    return f;
+  }, [trips, tripFilter, tripSort]);
+
+  const groupedTrips = useMemo(() => {
+    const map = new Map<number, { location: NonNullable<(typeof trips)[0]['location']>; trips: typeof trips }>();
+    filteredSortedTrips.forEach(trip => {
+      if (trip.location) {
+        const key = trip.location_id;
+        if (!map.has(key)) map.set(key, { location: trip.location, trips: [] });
+        map.get(key)!.trips.push(trip);
+      }
+    });
+    return Array.from(map.values());
+  }, [filteredSortedTrips]);
+
+  const selectedLocation = locations.find(l => l.id === Number(tripLocationId));
+
   // ── Main render ───────────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
@@ -728,14 +903,35 @@ export const MilestonesScreen: React.FC = () => {
             </View>
 
             {/* Calendar Sync */}
-            <View style={[styles.card, styles.rowBetween, { marginTop: 16 }]}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.boldTitle}>Đồng bộ Google Calendar</Text>
-                <Text style={styles.descText}>Tự động tạo lịch nhắc trên điện thoại hai bạn.</Text>
+            <View style={[styles.card, { marginTop: 16 }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={styles.boldTitle}>Đồng bộ Google Calendar</Text>
+                  <Text style={styles.descText}>Tự động tạo lịch nhắc trên điện thoại hai bạn.</Text>
+                </View>
+                <TouchableOpacity onPress={handleSyncCalendar} disabled={isSyncing} style={[styles.syncBtn, isSyncMode && { backgroundColor: T.mint, borderColor: T.border }]}>
+                  <Text style={[styles.syncBtnText, isSyncMode && { color: T.border }]}>
+                    {isSyncing ? '...' : isSyncMode ? `Xác nhận (${selectedForSync.length})` : 'Đồng bộ'}
+                  </Text>
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity onPress={handleSyncCalendar} disabled={isSyncing} style={styles.syncBtn}>
-                <Text style={styles.syncBtnText}>{isSyncing ? '...' : 'Đồng bộ'}</Text>
-              </TouchableOpacity>
+              {isSyncMode && (
+                <TouchableOpacity
+                  onPress={() => { setIsSyncMode(false); setSelectedForSync([]); }}
+                  style={{
+                    backgroundColor: T.bgCard,
+                    borderWidth: 2,
+                    borderColor: T.border,
+                    borderRadius: 12,
+                    paddingVertical: 10,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginTop: 10
+                  }}
+                >
+                  <Text style={{ color: T.textSecondary, fontWeight: '800', fontSize: 13 }}>Hủy đồng bộ</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* Passed */}
@@ -766,7 +962,7 @@ export const MilestonesScreen: React.FC = () => {
               <View style={[styles.sectionHeaderBar, { backgroundColor: 'rgba(255,101,132,0.04)' }]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <MapPin size={15} color={T.coral} />
-                  <Text style={styles.sectionHeaderTitle}>Hoạt động & Chuyến đi trong ngày</Text>
+                  <Text style={styles.sectionHeaderTitle}>Hoạt động & Chuyến đi</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <TouchableOpacity onPress={() => setIsOpenAddEventModal(true)} style={styles.smallBtn}>
@@ -784,10 +980,10 @@ export const MilestonesScreen: React.FC = () => {
                   coupleEvents.map((event, idx) => (
                     <View key={`event-${idx}`} style={styles.itemCard}>
                       <View style={{ flex: 1, paddingRight: 6 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                          <Text style={styles.itemTitle}>{event.title}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={[styles.itemTitle, { flexShrink: 1 }]}>{event.title}</Text>
                           {event.eventTime && (
-                            <View style={{ backgroundColor: 'rgba(61,47,61,0.08)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 }}>
+                            <View style={{ backgroundColor: 'rgba(61,47,61,0.08)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, marginTop: 2 }}>
                               <Text style={{ fontSize: 10, fontWeight: '700', color: T.textPrimary }}>🕒 {event.eventTime?.slice(0, 5)}</Text>
                             </View>
                           )}
@@ -843,34 +1039,111 @@ export const MilestonesScreen: React.FC = () => {
                 </TouchableOpacity>
               </View>
 
-              {/* Filter / Sort bar */}
-              <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(61,47,61,0.1)' }}>
-                {/* Filter */}
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {([['all', 'Tất cả'], ['domestic', 'Trong nước'], ['international', 'Nước ngoài']] as [string, string][]).map(([val, label]) => (
-                    <TouchableOpacity
-                      key={val}
-                      onPress={() => setTripFilter(val as any)}
-                      style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1.5, marginRight: 6, backgroundColor: tripFilter === val ? T.coral : T.bgCard, borderColor: tripFilter === val ? T.border : 'rgba(61,47,61,0.2)' }}
-                    >
-                      <Text style={{ fontSize: 11, fontWeight: '800', color: tripFilter === val ? T.border : T.textSecondary }}>{label}</Text>
-                    </TouchableOpacity>
-                  ))}
-                  {/* Sort */}
-                  <TouchableOpacity
-                    onPress={() => setTripSort(prev => prev === 'desc' ? 'asc' : 'desc')}
-                    style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1.5, borderColor: 'rgba(61,47,61,0.2)', backgroundColor: T.bgCard, flexDirection: 'row', alignItems: 'center', gap: 4 }}
-                  >
-                    <Clock size={11} color={T.textSecondary} />
-                    <Text style={{ fontSize: 11, fontWeight: '800', color: T.textSecondary }}>{tripSort === 'desc' ? 'Mới nhất' : 'Cũ nhất'}</Text>
-                  </TouchableOpacity>
-                </ScrollView>
+              {/* Filter / Sort / View Dashboard */}
+              <View style={{ backgroundColor: 'rgba(61,47,61,0.02)', padding: 12, borderBottomWidth: 1.5, borderBottomColor: 'rgba(61,47,61,0.1)' }}>
+                {/* Region Select (Tất cả, Trong nước, Nước ngoài) */}
+                <View style={{ width: '100%' }}>
+                  <Text style={{ fontSize: 10, fontWeight: '900', color: T.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Khu vực</Text>
+                  <View style={styles.segmentedControl}>
+                    {([['all', 'Tất cả'], ['domestic', 'Trong nước'], ['international', 'Nước ngoài']] as const).map(([val, label], idx) => (
+                      <TouchableOpacity
+                        key={val}
+                        onPress={() => setTripFilter(val)}
+                        style={[
+                          styles.segmentBtn,
+                          tripFilter === val && { backgroundColor: T.coral },
+                          idx !== 2 && { borderRightWidth: 1.5, borderRightColor: T.border }
+                        ]}
+                      >
+                        <Text style={[
+                          styles.segmentText,
+                          tripFilter === val ? { color: T.border } : { color: T.textSecondary }
+                        ]}>
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Row with View Mode and Sort Direction */}
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+                  {/* View Mode Toggle */}
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '900', color: T.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Chế độ xem</Text>
+                    <View style={styles.segmentedControl}>
+                      {([['list', 'Danh sách'], ['group', 'Địa điểm']] as const).map(([val, label], idx) => (
+                        <TouchableOpacity
+                          key={val}
+                          onPress={() => setTripViewMode(val)}
+                          style={[
+                            styles.segmentBtn,
+                            tripViewMode === val && { backgroundColor: T.mint },
+                            idx !== 1 && { borderRightWidth: 1.5, borderRightColor: T.border }
+                          ]}
+                        >
+                          <Text style={[
+                            styles.segmentText,
+                            tripViewMode === val ? { color: '#fff' } : { color: T.textSecondary }
+                          ]}>
+                            {label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+
+                  {/* Sort Toggle */}
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '900', color: T.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Sắp xếp</Text>
+                    <View style={styles.segmentedControl}>
+                      {([['desc', 'Mới nhất'], ['asc', 'Cũ nhất']] as const).map(([val, label], idx) => (
+                        <TouchableOpacity
+                          key={val}
+                          onPress={() => setTripSort(val)}
+                          style={[
+                            styles.segmentBtn,
+                            tripSort === val && { backgroundColor: '#FBBF24' },
+                            idx !== 1 && { borderRightWidth: 1.5, borderRightColor: T.border }
+                          ]}
+                        >
+                          <Text style={[
+                            styles.segmentText,
+                            tripSort === val ? { color: T.border } : { color: T.textSecondary }
+                          ]}>
+                            {label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                </View>
               </View>
 
               {/* Trip cards */}
               <View style={{ padding: 12 }}>
                 {filteredSortedTrips.length === 0 ? (
                   <Text style={{ textAlign: 'center', color: T.textSecondary, fontSize: 13, paddingVertical: 20 }}>Chưa có chuyến đi nào 🥺</Text>
+                ) : tripViewMode === 'group' ? (
+                  groupedTrips.map(group => (
+                    <View key={group.location.id} style={{ marginBottom: 16 }}>
+                      {/* Group Header */}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                        <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(61,47,61,0.1)' }} />
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(61,47,61,0.05)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 16, marginHorizontal: 8, borderWidth: 1, borderColor: 'rgba(61,47,61,0.1)' }}>
+                          <MapPin size={14} color={T.coral} />
+                          <Text style={{ fontSize: 14, fontWeight: '900', color: T.textPrimary }}>{group.location.name}</Text>
+                          <View style={{ backgroundColor: T.bgCard, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, borderWidth: 1, borderColor: 'rgba(61,47,61,0.1)' }}>
+                            <Text style={{ fontSize: 10, fontWeight: '800', color: T.textSecondary }}>{group.trips.length} chuyến</Text>
+                          </View>
+                        </View>
+                        <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(61,47,61,0.1)' }} />
+                      </View>
+                      
+                      {/* Trips in Group */}
+                      {group.trips.map(trip => renderTripCard(trip))}
+                    </View>
+                  ))
                 ) : (
                   filteredSortedTrips.map(trip => renderTripCard(trip))
                 )}
@@ -941,7 +1214,10 @@ export const MilestonesScreen: React.FC = () => {
               <Text style={[styles.label, { marginTop: 12 }]}>Địa điểm</Text>
               <TextInput value={eventLocation} onChangeText={setEventLocation} placeholder="Lotte Cinema Tây Hồ" placeholderTextColor="#666" style={styles.input} />
               <Text style={[styles.label, { marginTop: 12 }]}>Mô tả</Text>
-              <TextInput value={eventDescription} onChangeText={setEventDescription} placeholder="Ghi chú chi tiết..." placeholderTextColor="#666" multiline style={[styles.input, { height: 80, textAlignVertical: 'top', marginBottom: 20 }]} />
+              <TextInput value={eventDescription} onChangeText={setEventDescription} placeholder="Ghi chú chi tiết..." placeholderTextColor="#666" multiline style={[styles.input, { height: 80, textAlignVertical: 'top', marginBottom: 6 }]} />
+              <Text style={{ fontSize: 10, color: T.warning, fontWeight: '700', fontStyle: 'italic', marginBottom: 20, paddingHorizontal: 4 }}>
+                * Hoạt động sẽ tự động xóa sau 3 ngày kể từ ngày diễn ra.
+              </Text>
               <View style={styles.rowEnd}>
                 <TouchableOpacity onPress={() => setIsOpenAddEventModal(false)} style={[styles.actionBtn, styles.secondaryActionBtn]}>
                   <Text style={styles.secondaryActionBtnText}>Hủy</Text>
@@ -956,59 +1232,103 @@ export const MilestonesScreen: React.FC = () => {
       </Modal>
 
       {/* Add/Edit Trip Modal */}
-      <Modal visible={isOpenAddTripModal} transparent animationType="slide">
+      <Modal visible={isOpenAddTripModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingVertical: 40 }}>
-            <View style={styles.modalCard}>
+            <View style={[styles.modalCard, { padding: 0, overflow: 'hidden' }]}>
               {/* Modal Header */}
-              <View style={{ backgroundColor: T.textPrimary, marginHorizontal: -24, marginTop: -24, paddingHorizontal: 20, paddingVertical: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+              <View style={{ paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 2, borderBottomColor: 'rgba(61,47,61,0.1)', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: T.bgCard }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Plane size={18} color={T.bgCard} />
-                  <Text style={{ fontSize: 16, fontWeight: '900', color: T.bgCard }}>{editingTripId ? 'Sửa chuyến đi' : 'Thêm nhật ký chuyến đi'}</Text>
+                  <Plane size={20} color={T.textPrimary} />
+                  <Text style={{ fontSize: 16, fontWeight: '900', color: T.textPrimary }}>{editingTripId ? 'Sửa nhật ký chuyến đi' : 'Thêm nhật ký chuyến đi'}</Text>
                 </View>
-                <TouchableOpacity onPress={() => setIsOpenAddTripModal(false)} style={{ backgroundColor: 'rgba(255,246,247,0.2)', borderRadius: 16, padding: 6 }}>
-                  <Text style={{ color: T.bgCard, fontWeight: '800', fontSize: 14 }}>✕</Text>
+                <TouchableOpacity onPress={() => setIsOpenAddTripModal(false)} style={{ backgroundColor: 'rgba(61,47,61,0.08)', borderRadius: 16, width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ color: T.textPrimary, fontWeight: '800', fontSize: 14 }}>✕</Text>
                 </TouchableOpacity>
               </View>
 
-              <Text style={styles.label}>Tiêu đề chuyến đi *</Text>
-              <TextInput value={tripTitle} onChangeText={setTripTitle} placeholder="Nghỉ dưỡng cuối tuần Đà Lạt" placeholderTextColor="#666" style={styles.input} />
+              <View style={{ padding: 20 }}>
+                <Text style={styles.label}>Tiêu đề chuyến đi <Text style={{ color: T.warning }}>*</Text></Text>
+                <TextInput value={tripTitle} onChangeText={setTripTitle} placeholder="Nghỉ dưỡng cuối tuần Đà Lạt" placeholderTextColor="#999" style={styles.input} />
 
-              <Text style={[styles.label, { marginTop: 12 }]}>Địa điểm *</Text>
-              <TouchableOpacity
-                onPress={() => setIsOpenLocationPicker(true)}
-                style={[styles.input, { justifyContent: 'center', marginBottom: 0 }]}
-              >
-                <Text style={{ fontSize: 14, fontWeight: '700', color: selectedLocation ? T.textPrimary : '#666' }}>
-                  {selectedLocation ? `${selectedLocation.name} (${selectedLocation.type === 'province' ? 'Trong nước' : 'Nước ngoài'})` : '-- Chọn địa điểm --'}
-                </Text>
-              </TouchableOpacity>
-
-              <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>Ngày đi *</Text>
-                  <TextInput value={tripStartDate} onChangeText={text => { setTripStartDate(text); if (!tripEndDate || tripEndDate < text) setTripEndDate(text); }} placeholder="YYYY-MM-DD" placeholderTextColor="#666" style={styles.input} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>Ngày về *</Text>
-                  <TextInput value={tripEndDate} onChangeText={setTripEndDate} placeholder="YYYY-MM-DD" placeholderTextColor="#666" style={styles.input} />
-                </View>
-              </View>
-
-              <Text style={[styles.label, { marginTop: 12 }]}>Mô tả / Cảm nhận</Text>
-              <TextInput value={tripDescription} onChangeText={setTripDescription} placeholder="Ghi lại những khoảnh khắc đáng nhớ..." placeholderTextColor="#666" multiline style={[styles.input, { height: 80, textAlignVertical: 'top', marginBottom: 20 }]} />
-
-              <View style={styles.rowEnd}>
-                <TouchableOpacity onPress={() => setIsOpenAddTripModal(false)} style={[styles.actionBtn, styles.secondaryActionBtn]}>
-                  <Text style={styles.secondaryActionBtnText}>Hủy</Text>
-                </TouchableOpacity>
+                <Text style={[styles.label, { marginTop: 12 }]}>Địa điểm <Text style={{ color: T.warning }}>*</Text></Text>
                 <TouchableOpacity
-                  onPress={handleAddTrip}
-                  disabled={isAddingTrip || !tripTitle.trim() || !tripStartDate || !tripEndDate || !tripLocationId}
-                  style={[styles.actionBtn, { marginLeft: 8, opacity: (isAddingTrip || !tripTitle.trim() || !tripStartDate || !tripEndDate || !tripLocationId) ? 0.5 : 1 }]}
+                  onPress={() => setIsOpenLocationPicker(true)}
+                  style={[styles.input, { justifyContent: 'space-between', marginBottom: 0, flexDirection: 'row', alignItems: 'center' }]}
                 >
-                  <Text style={styles.actionBtnText}>{isAddingTrip ? 'Đang lưu...' : editingTripId ? 'Cập nhật' : 'Lưu kỷ niệm'}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                    <MapPin size={16} color={T.textSecondary} />
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: selectedLocation ? T.textPrimary : '#999', flex: 1 }} numberOfLines={1}>
+                      {selectedLocation ? `${selectedLocation.name} (${selectedLocation.type === 'province' ? 'Trong nước' : 'Nước ngoài'})` : '-- Chọn địa điểm du lịch --'}
+                    </Text>
+                  </View>
+                  <ChevronDown size={16} color={T.textSecondary} />
                 </TouchableOpacity>
+
+                <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.label}>Ngày đi <Text style={{ color: T.warning }}>*</Text></Text>
+                    <TouchableOpacity onPress={() => setShowTripStartDatePicker(true)} style={[styles.input, { justifyContent: 'center' }]}>
+                      <Text style={{ color: tripStartDate ? T.textPrimary : '#999', fontWeight: '700', fontSize: 14 }}>
+                        {tripStartDate || "YYYY-MM-DD"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.label}>Ngày về <Text style={{ color: T.warning }}>*</Text></Text>
+                    <TouchableOpacity onPress={() => setShowTripEndDatePicker(true)} style={[styles.input, { justifyContent: 'center' }]}>
+                      <Text style={{ color: tripEndDate ? T.textPrimary : '#999', fontWeight: '700', fontSize: 14 }}>
+                        {tripEndDate || "YYYY-MM-DD"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {showTripStartDatePicker && (
+                  <DateTimePicker
+                    value={tripStartDate ? new Date(tripStartDate) : new Date()}
+                    mode="date"
+                    display="default"
+                    onChange={(event, date) => {
+                      setShowTripStartDatePicker(Platform.OS === 'ios');
+                      if (date && event.type !== 'dismissed') {
+                        const formatted = date.toISOString().split('T')[0];
+                        setTripStartDate(formatted);
+                        if (!tripEndDate || tripEndDate < formatted) setTripEndDate(formatted);
+                      }
+                    }}
+                  />
+                )}
+                {showTripEndDatePicker && (
+                  <DateTimePicker
+                    value={tripEndDate ? new Date(tripEndDate) : new Date()}
+                    mode="date"
+                    display="default"
+                    minimumDate={tripStartDate ? new Date(tripStartDate) : undefined}
+                    onChange={(event, date) => {
+                      setShowTripEndDatePicker(Platform.OS === 'ios');
+                      if (date && event.type !== 'dismissed') {
+                        setTripEndDate(date.toISOString().split('T')[0]);
+                      }
+                    }}
+                  />
+                )}
+
+                <Text style={[styles.label, { marginTop: 12 }]}>Mô tả / Cảm nhận</Text>
+                <TextInput value={tripDescription} onChangeText={setTripDescription} placeholder="Ghi lại những khoảnh khắc đáng nhớ..." placeholderTextColor="#999" multiline style={[styles.input, { height: 80, textAlignVertical: 'top', marginBottom: 20 }]} />
+
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }}>
+                  <TouchableOpacity onPress={() => setIsOpenAddTripModal(false)} style={{ backgroundColor: T.bgPrimary, borderWidth: 2.2, borderColor: T.border, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 20, shadowColor: '#000', shadowOffset: { width: 3, height: 3 }, shadowOpacity: 1, shadowRadius: 0, elevation: 3 }}>
+                    <Text style={{ color: T.textPrimary, fontWeight: '800', fontSize: 13 }}>Hủy</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handleAddTrip}
+                    disabled={isAddingTrip || !tripTitle.trim() || !tripStartDate || !tripEndDate || !tripLocationId}
+                    style={{ flex: 1, backgroundColor: T.coral, borderWidth: 2.2, borderColor: T.border, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 20, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 3, height: 3 }, shadowOpacity: 1, shadowRadius: 0, elevation: 3, opacity: (isAddingTrip || !tripTitle.trim() || !tripStartDate || !tripEndDate || !tripLocationId) ? 0.5 : 1 }}
+                  >
+                    <Text style={{ color: T.bgCard, fontWeight: '800', fontSize: 14 }}>{isAddingTrip ? 'Đang lưu...' : editingTripId ? 'Cập nhật' : 'Lưu kỷ niệm'}</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           </ScrollView>
@@ -1017,28 +1337,55 @@ export const MilestonesScreen: React.FC = () => {
 
       {/* Location Picker Modal */}
       <Modal visible={isOpenLocationPicker} transparent animationType="slide">
-        <View style={[styles.modalOverlay, { justifyContent: 'flex-end' }]}>
-          <View style={[styles.modalCard, { borderBottomLeftRadius: 0, borderBottomRightRadius: 0, maxHeight: '70%' }]}>
-            <Text style={styles.modalHeader}>Chọn địa điểm</Text>
-            <ScrollView>
+        <View style={[styles.modalOverlay, { justifyContent: 'flex-end', padding: 0 }]}>
+          <TouchableOpacity style={{ flex: 1 }} onPress={() => setIsOpenLocationPicker(false)} activeOpacity={1} />
+          <View style={[styles.modalCard, { borderBottomLeftRadius: 0, borderBottomRightRadius: 0, maxHeight: '70%', padding: 0 }]}>
+            <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(61,47,61,0.1)', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontSize: 16, fontWeight: '800', color: T.textPrimary }}>Chọn địa điểm</Text>
+              <TouchableOpacity onPress={() => setIsOpenLocationPicker(false)} style={{ padding: 4 }}>
+                <Text style={{ color: T.textSecondary, fontWeight: '800', fontSize: 16 }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ paddingHorizontal: 16 }}>
               {[{ id: '' as any, name: '-- Chọn địa điểm du lịch --', type: null as any, country: '', image_url: '' }, ...locations].map(loc => (
                 <TouchableOpacity
                   key={String(loc.id)}
                   onPress={() => { setTripLocationId(loc.id || ''); setIsOpenLocationPicker(false); }}
-                  style={{ paddingVertical: 12, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(61,47,61,0.1)', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: tripLocationId === loc.id ? 'rgba(255,101,132,0.08)' : 'transparent' }}
+                  style={{ paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(61,47,61,0.05)', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: tripLocationId === loc.id ? 'rgba(255,101,132,0.05)' : 'transparent', marginHorizontal: -16, paddingHorizontal: 16 }}
                 >
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: tripLocationId === loc.id ? T.coral : T.textPrimary }}>{loc.name}</Text>
+                  <Text style={{ fontSize: 15, fontWeight: tripLocationId === loc.id ? '800' : '600', color: tripLocationId === loc.id ? T.coral : T.textPrimary }}>{loc.name}</Text>
                   {loc.type && (
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: T.textSecondary, backgroundColor: 'rgba(61,47,61,0.08)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: T.textSecondary, backgroundColor: 'rgba(61,47,61,0.05)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
                       {loc.type === 'province' ? 'Trong nước' : 'Nước ngoài'}
                     </Text>
                   )}
                 </TouchableOpacity>
               ))}
+              <View style={{ height: 20 }} />
             </ScrollView>
-            <TouchableOpacity onPress={() => setIsOpenLocationPicker(false)} style={[styles.actionBtn, styles.secondaryActionBtn, { marginTop: 16 }]}>
-              <Text style={styles.secondaryActionBtnText}>Đóng</Text>
-            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal visible={!!tripToDelete} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { padding: 24, alignItems: 'center' }]}>
+            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(255,101,132,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+              <Trash2 size={32} color={T.warning} />
+            </View>
+            <Text style={{ fontSize: 18, fontWeight: '900', color: T.textPrimary, marginBottom: 8 }}>Xóa chuyến đi?</Text>
+            <Text style={{ fontSize: 13, color: T.textSecondary, textAlign: 'center', marginBottom: 24, lineHeight: 20 }}>
+              Bạn có chắc chắn muốn xóa chuyến đi này không?{'\n'}Hành động này không thể hoàn tác.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 12, width: '100%' }}>
+              <TouchableOpacity onPress={() => setTripToDelete(null)} style={{ flex: 1, backgroundColor: T.bgPrimary, borderWidth: 2.2, borderColor: T.border, borderRadius: 12, paddingVertical: 14, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 3, height: 3 }, shadowOpacity: 1, shadowRadius: 0, elevation: 3 }}>
+                <Text style={{ color: T.textPrimary, fontWeight: '800', fontSize: 14 }}>Giữ lại</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={confirmDeleteTrip} style={{ flex: 1, backgroundColor: T.warning, borderWidth: 2.2, borderColor: T.border, borderRadius: 12, paddingVertical: 14, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 3, height: 3 }, shadowOpacity: 1, shadowRadius: 0, elevation: 3 }}>
+                <Text style={{ color: T.bgCard, fontWeight: '800', fontSize: 14 }}>Đồng ý Xóa</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1108,6 +1455,25 @@ const styles = StyleSheet.create({
   actionBtnText: { fontWeight: '800', color: T.border },
   secondaryActionBtn: { backgroundColor: T.textPrimary },
   secondaryActionBtnText: { color: T.bgCard, fontWeight: '800' },
+
+  segmentedControl: {
+    flexDirection: 'row',
+    backgroundColor: T.bgCard,
+    borderWidth: 1.5,
+    borderColor: T.border,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  segmentBtn: {
+    flex: 1,
+    paddingVertical: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
 });
 
 export default MilestonesScreen;

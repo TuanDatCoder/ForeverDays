@@ -11,9 +11,59 @@ import { Heart, Calendar, Bell, User, Sparkles } from 'lucide-react';
 
 type TabType = 'home' | 'milestones' | 'reminders' | 'cosmos' | 'profile';
 
+const getTabFromPath = (path: string): TabType => {
+  const cleanPath = path.replace(/^\//, '').toLowerCase();
+  if (cleanPath === 'milestones') return 'milestones';
+  if (cleanPath === 'reminders') return 'reminders';
+  if (cleanPath === 'cosmos') return 'cosmos';
+  if (cleanPath === 'profile') return 'profile';
+  return 'home';
+};
+
+const getPathFromTab = (tab: TabType): string => {
+  if (tab === 'home') return '/';
+  return `/${tab}`;
+};
+
 const AppContent: React.FC = () => {
   const { user, isDemoMode, isLoading, coupleId, partner } = useRelationship();
-  const [activeTab, setActiveTab] = useState<TabType>('home');
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    const currentPath = window.location.pathname;
+    if (currentPath === '/') {
+      const saved = localStorage.getItem('fd_active_tab') as TabType | null;
+      return (saved && ['home', 'milestones', 'reminders', 'cosmos', 'profile'].includes(saved)) ? saved : 'home';
+    }
+    return getTabFromPath(currentPath);
+  });
+
+  const handleTabChange = (tab: TabType) => {
+    setActiveTab(tab);
+    localStorage.setItem('fd_active_tab', tab);
+    const targetPath = getPathFromTab(tab);
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState(null, '', targetPath);
+    }
+  };
+
+  // Synchronize initial URL and listen to back/forward navigation
+  useEffect(() => {
+    const currentPath = window.location.pathname;
+    if (currentPath === '/') {
+      const saved = localStorage.getItem('fd_active_tab') as TabType | null;
+      if (saved && saved !== 'home' && ['home', 'milestones', 'reminders', 'cosmos', 'profile'].includes(saved)) {
+        window.history.replaceState(null, '', `/${saved}`);
+      }
+    }
+
+    const handlePopState = () => {
+      const tabFromPath = getTabFromPath(window.location.pathname);
+      setActiveTab(tabFromPath);
+      localStorage.setItem('fd_active_tab', tabFromPath);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Listen to signal channel globally
   useEffect(() => {
@@ -148,7 +198,7 @@ const AppContent: React.FC = () => {
           {/* Navigation Links */}
           <div className="flex flex-col gap-3 mt-4">
             <button
-              onClick={() => setActiveTab('home')}
+              onClick={() => handleTabChange('home')}
               className={`flex items-center gap-3.5 px-4.5 py-3 rounded-xl border-[2.2px] font-extrabold text-[13px] transition-all cursor-pointer shadow-none hover:translate-x-[2px] hover:translate-y-[2px] ${
                 activeTab === 'home'
                   ? 'bg-primary-coral text-border-color border-border-color shadow-neo-hover'
@@ -160,7 +210,7 @@ const AppContent: React.FC = () => {
             </button>
 
             <button
-              onClick={() => setActiveTab('milestones')}
+              onClick={() => handleTabChange('milestones')}
               className={`flex items-center gap-3.5 px-4.5 py-3 rounded-xl border-[2.2px] font-extrabold text-[13px] transition-all cursor-pointer shadow-none hover:translate-x-[2px] hover:translate-y-[2px] ${
                 activeTab === 'milestones'
                   ? 'bg-primary-coral text-border-color border-border-color shadow-neo-hover'
@@ -172,7 +222,7 @@ const AppContent: React.FC = () => {
             </button>
 
             <button
-              onClick={() => setActiveTab('cosmos')}
+              onClick={() => handleTabChange('cosmos')}
               className={`flex items-center gap-3.5 px-4.5 py-3 rounded-xl border-[2.2px] font-extrabold text-[13px] transition-all cursor-pointer shadow-none hover:translate-x-[2px] hover:translate-y-[2px] ${
                 activeTab === 'cosmos'
                   ? 'bg-primary-coral text-border-color border-border-color shadow-neo-hover'
@@ -184,7 +234,7 @@ const AppContent: React.FC = () => {
             </button>
 
             <button
-              onClick={() => setActiveTab('reminders')}
+              onClick={() => handleTabChange('reminders')}
               className={`flex items-center gap-3.5 px-4.5 py-3 rounded-xl border-[2.2px] font-extrabold text-[13px] transition-all cursor-pointer shadow-none hover:translate-x-[2px] hover:translate-y-[2px] ${
                 activeTab === 'reminders'
                   ? 'bg-primary-coral text-border-color border-border-color shadow-neo-hover'
@@ -196,7 +246,7 @@ const AppContent: React.FC = () => {
             </button>
 
             <button
-              onClick={() => setActiveTab('profile')}
+              onClick={() => handleTabChange('profile')}
               className={`flex items-center gap-3.5 px-4.5 py-3 rounded-xl border-[2.2px] font-extrabold text-[13px] transition-all cursor-pointer shadow-none hover:translate-x-[2px] hover:translate-y-[2px] ${
                 activeTab === 'profile'
                   ? 'bg-primary-coral text-border-color border-border-color shadow-neo-hover'
@@ -242,7 +292,7 @@ const AppContent: React.FC = () => {
       {/* Bottom Navigation Tab Bar (Visible on Mobile) */}
       <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[1200px] h-[72px] bg-bg-card border-t-[2.2px] border-border-color border-x-0 md:border-x-[2.2px] border-x-border-color flex justify-around items-center pb-[env(safe-area-inset-bottom)] z-50 md:hidden">
         <div
-          onClick={() => setActiveTab('home')}
+          onClick={() => handleTabChange('home')}
           className={getTabItemClass('home')}
         >
           <Heart fill={activeTab === 'home' ? '#ff6584' : 'none'} />
@@ -250,7 +300,7 @@ const AppContent: React.FC = () => {
         </div>
 
         <div
-          onClick={() => setActiveTab('milestones')}
+          onClick={() => handleTabChange('milestones')}
           className={getTabItemClass('milestones')}
         >
           <Calendar fill={activeTab === 'milestones' ? '#ff6584' : 'none'} />
@@ -258,7 +308,7 @@ const AppContent: React.FC = () => {
         </div>
 
         <div
-          onClick={() => setActiveTab('cosmos')}
+          onClick={() => handleTabChange('cosmos')}
           className={getTabItemClass('cosmos')}
         >
           <Sparkles fill={activeTab === 'cosmos' ? '#ff6584' : 'none'} />
@@ -266,7 +316,7 @@ const AppContent: React.FC = () => {
         </div>
 
         <div
-          onClick={() => setActiveTab('reminders')}
+          onClick={() => handleTabChange('reminders')}
           className={getTabItemClass('reminders')}
         >
           <Bell fill={activeTab === 'reminders' ? '#ff6584' : 'none'} />
@@ -274,7 +324,7 @@ const AppContent: React.FC = () => {
         </div>
 
         <div
-          onClick={() => setActiveTab('profile')}
+          onClick={() => handleTabChange('profile')}
           className={getTabItemClass('profile')}
         >
           <User fill={activeTab === 'profile' ? '#ff6584' : 'none'} />

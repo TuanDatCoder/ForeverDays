@@ -69,6 +69,16 @@ export const MilestonesScreen: React.FC = () => {
   const [showSyncSuccess, setShowSyncSuccess] = useState(false);
   const [isSyncMode, setIsSyncMode] = useState(false);
   const [selectedForSync, setSelectedForSync] = useState<string[]>([]);
+  const [syncedEvents, setSyncedEvents] = useState<Record<string, any>>({});
+
+  const loadSyncedEvents = () => {
+    try {
+      const stored = localStorage.getItem('synced_calendar_events');
+      if (stored) {
+        setSyncedEvents(JSON.parse(stored));
+      }
+    } catch {}
+  };
 
   // Milestone Plans State
   const [plans, setPlans] = useState<MilestonePlan[]>([]);
@@ -110,6 +120,7 @@ export const MilestonesScreen: React.FC = () => {
   const [tripFilter, setTripFilter] = useState<'all' | 'domestic' | 'international'>('all');
   const [tripSort, setTripSort] = useState<'desc' | 'asc'>('desc');
   const [editingTripId, setEditingTripId] = useState<string | null>(null);
+  const [tripToDelete, setTripToDelete] = useState<string | null>(null);
 
   const milestoneService = new MilestoneService();
   const coupleEventService = new CoupleEventService();
@@ -169,15 +180,54 @@ export const MilestonesScreen: React.FC = () => {
     } catch {}
   };
 
+  const cleanupOldEvents = async (events: CoupleEvent[]) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const cutoffTime = today.getTime() - (3 * 24 * 60 * 60 * 1000);
+
+    const validEvents: CoupleEvent[] = [];
+    const eventsToDelete: string[] = [];
+    
+    for (const event of events) {
+      if (!event.eventDate) {
+        validEvents.push(event);
+        continue;
+      }
+      const eventDate = new Date(event.eventDate);
+      eventDate.setHours(0, 0, 0, 0);
+      if (eventDate.getTime() <= cutoffTime) {
+        eventsToDelete.push(event.id!);
+      } else {
+        validEvents.push(event);
+      }
+    }
+
+    if (eventsToDelete.length > 0) {
+      if (isDemoMode) {
+        localStorage.setItem('demo_couple_events', JSON.stringify(validEvents));
+      } else {
+        for (const id of eventsToDelete) {
+          try { await coupleEventService.deleteEvent(id); } catch {}
+        }
+      }
+    }
+    return validEvents;
+  };
+
   const loadCoupleEvents = async () => {
+    let loadedEvents: CoupleEvent[] = [];
     if (isDemoMode) {
       const saved = localStorage.getItem('demo_couple_events');
+      let parsed = [];
       if (saved) {
         try {
-          setCoupleEvents(JSON.parse(saved));
+          parsed = JSON.parse(saved);
         } catch {}
+      }
+      if (parsed.length > 0) {
+        loadedEvents = parsed;
       } else {
-        const mockEvents: CoupleEvent[] = [
+        loadedEvents = [
           {
             id: 'ev-1',
             coupleId: 'demo-couple-id',
@@ -197,17 +247,15 @@ export const MilestonesScreen: React.FC = () => {
             description: 'Phim rất hay, hai đứa ăn hết 1 bắp rang lớn.'
           }
         ];
-        setCoupleEvents(mockEvents);
-        localStorage.setItem('demo_couple_events', JSON.stringify(mockEvents));
+        localStorage.setItem('demo_couple_events', JSON.stringify(loadedEvents));
       }
-      return;
+    } else if (coupleId) {
+      try {
+        loadedEvents = await coupleEventService.fetchEvents(coupleId);
+      } catch {}
     }
-
-    if (!coupleId) return;
-    try {
-      const dbEvents = await coupleEventService.fetchEvents(coupleId);
-      setCoupleEvents(dbEvents);
-    } catch {}
+    loadedEvents = await cleanupOldEvents(loadedEvents);
+    setCoupleEvents(loadedEvents);
   };
 
   const loadPlans = async () => {
@@ -312,44 +360,41 @@ export const MilestonesScreen: React.FC = () => {
   };
 
   const loadTravelData = async () => {
-    if (isDemoMode) {
-      const mockLocations: TravelLocation[] = [
-        { id: 1, name: 'Đà Lạt', type: 'province', country: 'Việt Nam', image_url: 'https://images.unsplash.com/photo-1517427677505-610b42f1a601?auto=format&fit=crop&q=80&w=800' },
-        { id: 2, name: 'Hà Nội', type: 'province', country: 'Việt Nam', image_url: 'https://images.unsplash.com/photo-1555921015-5532091f6026?auto=format&fit=crop&q=80&w=800' },
-        { id: 3, name: 'Thái Lan', type: 'country', country: 'Thái Lan', image_url: 'https://images.unsplash.com/photo-1552465011-b4e21bf6e79a?auto=format&fit=crop&q=80&w=800' },
-      ];
-      setLocations(mockLocations);
-
-      const saved = localStorage.getItem('demo_travel_trips');
-      if (saved) {
-        try {
-          setTrips(JSON.parse(saved));
-        } catch {}
-      } else {
-        const mockTrips: TravelTrip[] = [
-          {
+    try {
+      if (isDemoMode) {
+        const mockLocations: TravelLocation[] = [
+          { id: 1, name: 'Đà Lạt', type: 'province', country: 'Việt Nam', image_url: 'https://images.unsplash.com/photo-1517427677505-610b42f1a601?auto=format&fit=crop&q=80&w=800' },
+          { id: 2, name: 'Hà Nội', type: 'province', country: 'Việt Nam', image_url: 'https://images.unsplash.com/photo-1555921015-5532091f6026?auto=format&fit=crop&q=80&w=800' },
+          { id: 3, name: 'Thái Lan', type: 'country', country: 'Thái Lan', image_url: 'https://images.unsplash.com/photo-1552465011-b4e21bf6e79a?auto=format&fit=crop&q=80&w=800' },
+        ];
+        setLocations(mockLocations);
+        
+        const savedTrips = localStorage.getItem('demo_travel_trips');
+        let loadedTrips: TravelTrip[] = [];
+        if (savedTrips) {
+          try { loadedTrips = JSON.parse(savedTrips); } catch {}
+        }
+        if (loadedTrips.length === 0) {
+          loadedTrips = [{
             id: 'trip-1',
             couple_id: 'demo-couple-id',
             location_id: 1,
             title: 'Nghỉ dưỡng Đà Lạt 3N2Đ',
-            start_date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            end_date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            start_date: new Date(Date.now() - 5 * 86400000).toISOString().split('T')[0],
+            end_date: new Date(Date.now() - 2 * 86400000).toISOString().split('T')[0],
             description: 'Đi ăn lẩu bò, đi săn mây',
             location: mockLocations[0],
-          }
-        ];
-        setTrips(mockTrips);
-        localStorage.setItem('demo_travel_trips', JSON.stringify(mockTrips));
-      }
-      return;
-    }
-
-    try {
-      const locs = await travelService.fetchLocations();
-      setLocations(locs);
-      if (coupleId) {
-        const dbTrips = await travelService.fetchTrips(coupleId);
-        setTrips(dbTrips);
+          }];
+          localStorage.setItem('demo_travel_trips', JSON.stringify(loadedTrips));
+        }
+        setTrips(loadedTrips);
+      } else {
+        const locs = await travelService.fetchLocations();
+        setLocations(locs);
+        if (coupleId) {
+          const dbTrips = await travelService.fetchTrips(coupleId);
+          setTrips(dbTrips);
+        }
       }
     } catch {}
   };
@@ -359,6 +404,7 @@ export const MilestonesScreen: React.FC = () => {
     loadCoupleEvents();
     loadPlans();
     loadTravelData();
+    loadSyncedEvents();
   }, [coupleId, isDemoMode]);
 
   const handleAddTrip = async () => {
@@ -421,15 +467,21 @@ export const MilestonesScreen: React.FC = () => {
     setIsOpenAddTripModal(true);
   };
 
-  const handleDeleteTrip = async (id: string) => {
+  const handleDeleteTrip = (id: string) => {
+    setTripToDelete(id);
+  };
+
+  const confirmDeleteTrip = async () => {
+    if (!tripToDelete) return;
     if (isDemoMode) {
-      const updatedList = trips.filter(t => t.id !== id);
+      const updatedList = trips.filter(t => t.id !== tripToDelete);
       setTrips(updatedList);
       localStorage.setItem('demo_travel_trips', JSON.stringify(updatedList));
     } else {
-      await travelService.deleteTrip(id);
+      await travelService.deleteTrip(tripToDelete);
       await loadTravelData();
     }
+    setTripToDelete(null);
   };
 
   const handleAddCoupleEvent = async () => {
@@ -487,12 +539,52 @@ export const MilestonesScreen: React.FC = () => {
     }
 
     setIsSyncing(true);
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setIsSyncing(false);
-    setIsSyncMode(false);
-    setSelectedForSync([]);
-    setShowSyncSuccess(true);
+    
+    try {
+      const stored = localStorage.getItem('synced_calendar_events');
+      const syncedMap = stored ? JSON.parse(stored) : {};
+
+      for (const mKey of selectedForSync) {
+        const item = upcoming.find(m => getMilestoneKey(m) === mKey);
+        if (item) {
+          syncedMap[mKey] = {
+            syncedAt: new Date().toISOString(),
+            title: item.title,
+            targetDate: item.targetDate
+          };
+        }
+      }
+
+      localStorage.setItem('synced_calendar_events', JSON.stringify(syncedMap));
+      loadSyncedEvents();
+
+      // Generate and download ICS file containing all selected items
+      let icsContent = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//ForeverDays//Sync//EN\r\n";
+      for (const mKey of selectedForSync) {
+        const item = upcoming.find(m => getMilestoneKey(m) === mKey);
+        if (!item) continue;
+        const cleanDate = item.targetDate.replace(/-/g, '');
+        const uid = `${mKey}@foreverdays.com`;
+        icsContent += `BEGIN:VEVENT\r\nUID:${uid}\r\nDTSTART;VALUE=DATE:${cleanDate}\r\nSUMMARY:${item.title}\r\nEND:VEVENT\r\n`;
+      }
+      icsContent += "END:VCALENDAR\r\n";
+
+      const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+      const link = document.createElement('a');
+      link.href = window.URL.createObjectURL(blob);
+      link.setAttribute('download', 'forever_days_milestones.ics');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setIsSyncMode(false);
+      setSelectedForSync([]);
+      setShowSyncSuccess(true);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const toggleSyncSelection = (key: string) => {
@@ -738,6 +830,11 @@ export const MilestonesScreen: React.FC = () => {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-extrabold text-[14px] truncate">{item.title}</span>
+                             {syncedEvents[mKey] && (
+                               <span className="bg-secondary-mint/15 text-secondary-mint text-[10px] font-extrabold px-2 py-0.5 rounded-full whitespace-nowrap border border-secondary-mint/30 flex items-center gap-1">
+                                 📅 Đã đồng bộ
+                               </span>
+                             )}
                             {item.yearLabel && (
                               <span className="bg-primary-coral/15 text-primary-coral text-[10px] font-extrabold px-2 py-0.5 rounded-full whitespace-nowrap border border-primary-coral/30">
                                {item.yearLabel}
@@ -1527,6 +1624,9 @@ export const MilestonesScreen: React.FC = () => {
                 onChange={e => setEventDescription(e.target.value)}
                 className="bg-bg-primary border-[2.2px] border-border-color rounded-xl px-4 py-3 text-text-primary font-bold text-[15px] w-full outline-none shadow-[inset_2px_2px_5px_rgba(0,0,0,0.3)] focus:border-primary-coral h-[70px] resize-none"
               />
+              <p className="text-[11px] text-warning-coral font-bold italic mt-2">
+                * Hoạt động sẽ tự động xóa sau 3 ngày kể từ ngày diễn ra.
+              </p>
             </div>
 
             <div className="flex justify-end gap-2">
@@ -1644,6 +1744,34 @@ export const MilestonesScreen: React.FC = () => {
                   {isAddingTrip ? 'Đang lưu...' : (editingTripId ? 'Cập nhật' : 'Lưu kỷ niệm')}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Delete Confirmation Modal */}
+      {tripToDelete && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-text-primary/20 backdrop-blur-sm animate-fade-in">
+          <div className="bg-bg-primary w-full max-w-[340px] rounded-3xl border-[2.5px] border-border-color shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] overflow-hidden flex flex-col p-6 items-center text-center">
+            <div className="w-16 h-16 rounded-full bg-warning-coral/10 flex items-center justify-center mb-4 border-[2px] border-warning-coral/20">
+              <Trash2 size={32} className="text-warning-coral" />
+            </div>
+            <h3 className="font-black text-text-primary text-xl mb-2">Xóa chuyến đi?</h3>
+            <p className="text-sm font-bold text-text-secondary leading-relaxed mb-6">
+              Bạn có chắc chắn muốn xóa chuyến đi này không? Hành động này không thể hoàn tác.
+            </p>
+            <div className="flex gap-3 w-full">
+              <button
+                onClick={() => setTripToDelete(null)}
+                className="flex-1 bg-bg-primary text-text-primary font-extrabold text-[13px] border-[2.2px] border-border-color rounded-xl px-4 py-3 cursor-pointer shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none transition-all"
+              >
+                Giữ lại
+              </button>
+              <button
+                onClick={confirmDeleteTrip}
+                className="flex-1 bg-warning-coral text-bg-primary font-extrabold text-[13px] border-[2.2px] border-border-color rounded-xl px-4 py-3 cursor-pointer shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none transition-all"
+              >
+                Đồng ý Xóa
+              </button>
             </div>
           </div>
         </div>

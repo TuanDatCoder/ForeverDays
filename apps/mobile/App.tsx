@@ -57,6 +57,21 @@ function MainApp() {
   const { user, isLoading, coupleId, partner, isDemoMode } = useRelationship();
   const [activeTab, setActiveTab] = useState<'home' | 'milestones' | 'reminders' | 'cosmos' | 'profile'>('home');
 
+  // Restore last active tab
+  useEffect(() => {
+    AsyncStorage.getItem('fd_active_tab').then(saved => {
+      const valid = ['home', 'milestones', 'reminders', 'cosmos', 'profile'];
+      if (saved && valid.includes(saved)) {
+        setActiveTab(saved as any);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const handleTabChange = (tab: 'home' | 'milestones' | 'reminders' | 'cosmos' | 'profile') => {
+    setActiveTab(tab);
+    AsyncStorage.setItem('fd_active_tab', tab).catch(() => {});
+  };
+
   // Listen to signal channel globally on Mobile
   useEffect(() => {
     if (isDemoMode || !coupleId || !user?.id) return;
@@ -182,7 +197,7 @@ function MainApp() {
       {/* Custom Neo-Brutalist Bottom Tab Bar */}
       <View style={styles.tabBar}>
         <TouchableOpacity
-          onPress={() => setActiveTab('home')}
+          onPress={() => handleTabChange('home')}
           activeOpacity={0.8}
           style={[styles.tabItem, activeTab === 'home' && styles.tabItemActive]}
         >
@@ -196,7 +211,7 @@ function MainApp() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => setActiveTab('milestones')}
+          onPress={() => handleTabChange('milestones')}
           activeOpacity={0.8}
           style={[styles.tabItem, activeTab === 'milestones' && styles.tabItemActive]}
         >
@@ -210,7 +225,7 @@ function MainApp() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => setActiveTab('cosmos')}
+          onPress={() => handleTabChange('cosmos')}
           activeOpacity={0.8}
           style={[styles.tabItem, activeTab === 'cosmos' && styles.tabItemActive]}
         >
@@ -224,7 +239,7 @@ function MainApp() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => setActiveTab('reminders')}
+          onPress={() => handleTabChange('reminders')}
           activeOpacity={0.8}
           style={[styles.tabItem, activeTab === 'reminders' && styles.tabItemActive]}
         >
@@ -238,7 +253,7 @@ function MainApp() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => setActiveTab('profile')}
+          onPress={() => handleTabChange('profile')}
           activeOpacity={0.8}
           style={[styles.tabItem, activeTab === 'profile' && styles.tabItemActive]}
         >
