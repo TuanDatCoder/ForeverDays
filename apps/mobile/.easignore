@@ -1,0 +1,16 @@
+# Ignore local native directories
+android/
+ios/
+
+# Ignore dependencies and caches
+node_modules/
+.expo/
+dist/
+web-build/
+*.tsbuildinfo
+
+# Ignore lock files and temporary files
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.metro-health-check*

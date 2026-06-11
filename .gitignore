@@ -44,3 +44,13 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 node_modules
+
+# Mobile local builds
+apps/mobile/android/
+apps/mobile/ios/
+
+# Web local builds
+apps/web/dist/
+
+# Build outputs
+*.apk

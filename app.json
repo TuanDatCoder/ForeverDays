@@ -1,3 +1,12 @@
 {
-  "expo": {}
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "981b46c5-f178-4819-b3c8-b21936bb00d2"
+      }
+    },
+    "android": {
+      "package": "com.tuandatdev.foreverdays"
+    }
+  }
 }
