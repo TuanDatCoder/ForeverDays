@@ -1,16 +1,74 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useRelationship } from '../core/RelationshipContext';
 import { LoveUtils } from '../core/loveUtils';
 import type { MilestoneItem } from '../core/loveUtils';
-import { MilestoneService, CoupleEventService, MilestonePlanService } from '@forever-days/core';
-import type { CoupleEvent, MilestonePlan } from '@forever-days/core';
-import { Calendar, Plus, CheckCircle, Trash2, Heart, Clock, MapPin, Compass, ChevronDown, ChevronUp, Utensils, Gamepad2 } from 'lucide-react';
+import { MilestoneService, CoupleEventService, MilestonePlanService, TravelService } from '@forever-days/core';
+import type { CoupleEvent, MilestonePlan, TravelLocation, TravelTrip } from '@forever-days/core';
+import { Calendar, Plus, CheckCircle, Trash2, Pencil, Heart, Clock, MapPin, Compass, ChevronDown, ChevronUp, Utensils, Gamepad2, Plane, Globe } from 'lucide-react';
+
+const CustomDropdown = ({ value, options, onChange, icon: Icon, label, fullWidth }: any) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find((o: any) => o.value === value);
+
+  return (
+    <div className={`relative ${fullWidth ? 'w-full' : ''}`} ref={dropdownRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={`flex items-center justify-between bg-bg-primary border-[1.5px] border-border-color rounded-lg gap-2 hover:bg-border-color/5 transition-colors ${fullWidth ? 'w-full px-4 py-3 border-[2px] rounded-xl' : 'px-3 py-1.5'}`}
+      >
+        <div className="flex items-center gap-2 overflow-hidden">
+          {Icon && <Icon size={fullWidth ? 16 : 14} className="text-text-secondary shrink-0" />}
+          <span className={`${fullWidth ? 'text-sm' : 'text-[12px]'} font-bold text-text-primary truncate`}>
+            {label ? `${label}: ` : ''}{selectedOption?.label || '-- Chọn --'}
+          </span>
+        </div>
+        <ChevronDown size={14} className={`text-text-secondary transition-transform shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      
+      {isOpen && (
+        <div className={`absolute top-full left-0 mt-1 ${fullWidth ? 'w-full' : 'min-w-[140px]'} max-h-[200px] overflow-y-auto bg-bg-card border-[2.2px] border-border-color rounded-xl shadow-neo z-50 flex flex-col
+          [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-border-color/30 [&::-webkit-scrollbar-thumb]:rounded-full`}>
+          {options.map((opt: any) => (
+            <button
+              key={opt.value}
+              onClick={() => {
+                onChange(opt.value);
+                setIsOpen(false);
+              }}
+              className={`text-left px-3 py-2 ${fullWidth ? 'text-sm' : 'text-[12px]'} font-bold transition-colors ${
+                value === opt.value 
+                  ? 'bg-primary-coral/10 text-primary-coral' 
+                  : 'text-text-primary hover:bg-border-color/10'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const MilestonesScreen: React.FC = () => {
   const { anniversaryDate, coupleId, isDemoMode } = useRelationship();
   const [customMilestones, setCustomMilestones] = useState<MilestoneItem[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [showSyncSuccess, setShowSyncSuccess] = useState(false);
+  const [isSyncMode, setIsSyncMode] = useState(false);
+  const [selectedForSync, setSelectedForSync] = useState<string[]>([]);
 
   // Milestone Plans State
   const [plans, setPlans] = useState<MilestonePlan[]>([]);
@@ -39,8 +97,23 @@ export const MilestonesScreen: React.FC = () => {
   const [eventDescription, setEventDescription] = useState('');
   const [isAddingEvent, setIsAddingEvent] = useState(false);
 
+  // Travel Trips State
+  const [locations, setLocations] = useState<TravelLocation[]>([]);
+  const [trips, setTrips] = useState<TravelTrip[]>([]);
+  const [isOpenAddTripModal, setIsOpenAddTripModal] = useState(false);
+  const [isAddingTrip, setIsAddingTrip] = useState(false);
+  const [tripTitle, setTripTitle] = useState('');
+  const [tripStartDate, setTripStartDate] = useState('');
+  const [tripEndDate, setTripEndDate] = useState('');
+  const [tripLocationId, setTripLocationId] = useState<number | ''>('');
+  const [tripDescription, setTripDescription] = useState('');
+  const [tripFilter, setTripFilter] = useState<'all' | 'domestic' | 'international'>('all');
+  const [tripSort, setTripSort] = useState<'desc' | 'asc'>('desc');
+  const [editingTripId, setEditingTripId] = useState<string | null>(null);
+
   const milestoneService = new MilestoneService();
   const coupleEventService = new CoupleEventService();
+  const travelService = new TravelService();
 
   const loadCustomMilestones = async () => {
     if (isDemoMode) {
@@ -238,11 +311,126 @@ export const MilestonesScreen: React.FC = () => {
     }
   };
 
+  const loadTravelData = async () => {
+    if (isDemoMode) {
+      const mockLocations: TravelLocation[] = [
+        { id: 1, name: 'Đà Lạt', type: 'province', country: 'Việt Nam', image_url: 'https://images.unsplash.com/photo-1517427677505-610b42f1a601?auto=format&fit=crop&q=80&w=800' },
+        { id: 2, name: 'Hà Nội', type: 'province', country: 'Việt Nam', image_url: 'https://images.unsplash.com/photo-1555921015-5532091f6026?auto=format&fit=crop&q=80&w=800' },
+        { id: 3, name: 'Thái Lan', type: 'country', country: 'Thái Lan', image_url: 'https://images.unsplash.com/photo-1552465011-b4e21bf6e79a?auto=format&fit=crop&q=80&w=800' },
+      ];
+      setLocations(mockLocations);
+
+      const saved = localStorage.getItem('demo_travel_trips');
+      if (saved) {
+        try {
+          setTrips(JSON.parse(saved));
+        } catch {}
+      } else {
+        const mockTrips: TravelTrip[] = [
+          {
+            id: 'trip-1',
+            couple_id: 'demo-couple-id',
+            location_id: 1,
+            title: 'Nghỉ dưỡng Đà Lạt 3N2Đ',
+            start_date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            end_date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            description: 'Đi ăn lẩu bò, đi săn mây',
+            location: mockLocations[0],
+          }
+        ];
+        setTrips(mockTrips);
+        localStorage.setItem('demo_travel_trips', JSON.stringify(mockTrips));
+      }
+      return;
+    }
+
+    try {
+      const locs = await travelService.fetchLocations();
+      setLocations(locs);
+      if (coupleId) {
+        const dbTrips = await travelService.fetchTrips(coupleId);
+        setTrips(dbTrips);
+      }
+    } catch {}
+  };
+
   useEffect(() => {
     loadCustomMilestones();
     loadCoupleEvents();
     loadPlans();
+    loadTravelData();
   }, [coupleId, isDemoMode]);
+
+  const handleAddTrip = async () => {
+    if (!tripTitle.trim() || !tripStartDate || !tripEndDate || !tripLocationId) return;
+
+    setIsAddingTrip(true);
+    const newTrip = {
+      couple_id: coupleId || 'demo-couple-id',
+      location_id: Number(tripLocationId),
+      title: tripTitle.trim(),
+      start_date: tripStartDate,
+      end_date: tripEndDate,
+      description: tripDescription.trim() || undefined,
+    };
+
+    if (editingTripId) {
+      if (isDemoMode) {
+        const loc = locations.find(l => l.id === Number(tripLocationId));
+        const updatedList = trips.map(t => t.id === editingTripId ? { ...t, ...newTrip, location: loc } : t);
+        setTrips(updatedList);
+        localStorage.setItem('demo_travel_trips', JSON.stringify(updatedList));
+      } else {
+        await travelService.updateTrip(editingTripId, newTrip);
+        await loadTravelData();
+      }
+    } else {
+      if (isDemoMode) {
+        const loc = locations.find(l => l.id === Number(tripLocationId));
+        const tripItem: TravelTrip = {
+          id: `trip-${Date.now()}`,
+          ...newTrip,
+          location: loc,
+        };
+        const updatedList = [tripItem, ...trips];
+        setTrips(updatedList);
+        localStorage.setItem('demo_travel_trips', JSON.stringify(updatedList));
+      } else {
+        await travelService.createTrip(newTrip);
+        await loadTravelData();
+      }
+    }
+
+    setTripTitle('');
+    setTripStartDate('');
+    setTripEndDate('');
+    setTripLocationId('');
+    setTripDescription('');
+    setEditingTripId(null);
+    setIsOpenAddTripModal(false);
+    setIsAddingTrip(false);
+  };
+
+  const handleEditTrip = (trip: TravelTrip) => {
+    setTripTitle(trip.title);
+    setTripStartDate(trip.start_date);
+    setTripEndDate(trip.end_date);
+    setTripLocationId(trip.location_id);
+    setTripDescription(trip.description || '');
+    setEditingTripId(trip.id || null);
+    setIsOpenAddTripModal(true);
+  };
+
+  const handleDeleteTrip = async (id: string) => {
+    if (isDemoMode) {
+      const updatedList = trips.filter(t => t.id !== id);
+      setTrips(updatedList);
+      localStorage.setItem('demo_travel_trips', JSON.stringify(updatedList));
+    } else {
+      await travelService.deleteTrip(id);
+      await loadTravelData();
+    }
+  };
 
   const handleAddCoupleEvent = async () => {
     if (!eventTitle.trim() || !eventDate) return;
@@ -288,11 +476,29 @@ export const MilestonesScreen: React.FC = () => {
   };
 
   const handleSyncCalendar = async () => {
+    if (!isSyncMode) {
+      setIsSyncMode(true);
+      return;
+    }
+    
+    if (selectedForSync.length === 0) {
+      setIsSyncMode(false);
+      return;
+    }
+
     setIsSyncing(true);
     // Simulate API delay
     await new Promise(resolve => setTimeout(resolve, 2000));
     setIsSyncing(false);
+    setIsSyncMode(false);
+    setSelectedForSync([]);
     setShowSyncSuccess(true);
+  };
+
+  const toggleSyncSelection = (key: string) => {
+    setSelectedForSync(prev => 
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    );
   };
 
   const handleAddMilestone = async () => {
@@ -362,10 +568,31 @@ export const MilestonesScreen: React.FC = () => {
   };
 
   const formatDateString = (dateStr: string) => {
+    if (!dateStr) return '';
     const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return '';
     const dayName = getDayOfWeekName(date);
     const dateFormatted = date.toLocaleDateString('vi-VN', { day: 'numeric', month: 'long', year: 'numeric' });
     return `${dayName}, ${dateFormatted}`;
+  };
+
+  const formatShortDate = (dateStr: string) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    return dateStr;
+  };
+
+  const getTripDuration = (start: string, end: string) => {
+    if (!start || !end) return '';
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    const diffTime = endDate.getTime() - startDate.getTime();
+    if (diffTime < 0) return '';
+    
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    if (diffDays === 1) return '(Trong ngày)';
+    return `(${diffDays} ngày ${diffDays - 1} đêm)`;
   };
 
   const getGoogleCalendarUrl = (title: string, dateStr: string) => {
@@ -383,27 +610,104 @@ export const MilestonesScreen: React.FC = () => {
     return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${cleanDateStr}/${cleanEndDateStr}`;
   };
 
+  const [activeTab, setActiveTab] = useState<'milestones' | 'travel'>('milestones');
+  const [tripViewMode, setTripViewMode] = useState<'list' | 'group'>('list');
+
+  const travelStats = useMemo(() => {
+    const uniqueLocations = new Set(trips.map(t => t.location_id));
+    const domesticCount = new Set(trips.filter(t => t.location?.type === 'province').map(t => t.location_id)).size;
+    const internationalCount = new Set(trips.filter(t => t.location?.type === 'country').map(t => t.location_id)).size;
+    
+    return {
+      totalTrips: trips.length,
+      uniqueLocations: uniqueLocations.size,
+      domesticCount,
+      internationalCount
+    };
+  }, [trips]);
+
+  const filteredSortedTrips = useMemo(() => {
+    let filtered = trips.filter(t => {
+      if (tripFilter === 'domestic') return t.location?.type === 'province';
+      if (tripFilter === 'international') return t.location?.type === 'country';
+      return true;
+    });
+    
+    filtered.sort((a, b) => {
+      const timeA = new Date(a.start_date).getTime();
+      const timeB = new Date(b.start_date).getTime();
+      return tripSort === 'desc' ? timeB - timeA : timeA - timeB;
+    });
+    return filtered;
+  }, [trips, tripFilter, tripSort]);
+
+  const groupedTrips = useMemo(() => {
+    const groups: Record<number, { location: TravelLocation, trips: TravelTrip[] }> = {};
+    filteredSortedTrips.forEach(t => {
+      if (!groups[t.location_id]) {
+        groups[t.location_id] = { location: t.location, trips: [] };
+      }
+      groups[t.location_id].trips.push(t);
+    });
+
+    return Object.values(groups);
+  }, [filteredSortedTrips]);
+
   return (
     <div className="flex flex-col flex-1">
       <div className="bg-gradient-to-br from-primary-coral/15 to-secondary-mint/5 p-6 border-b-[2.2px] border-border-color text-center">
         <h2 className="text-xl font-black text-text-primary">Cột mốc kỷ niệm</h2>
       </div>
 
+      {/* Tabs */}
+      <div className="flex bg-bg-card border-b-[2.2px] border-border-color p-3 gap-3">
+        <button
+          onClick={() => setActiveTab('milestones')}
+          className={`flex-1 py-3 rounded-xl font-black text-[13px] border-[2.2px] transition-all uppercase tracking-wider ${
+            activeTab === 'milestones'
+              ? 'bg-primary-coral text-border-color border-border-color shadow-neo'
+              : 'bg-bg-primary text-text-secondary border-border-color/30 hover:bg-bg-primary/80'
+          }`}
+        >
+          Ngày kỷ niệm
+        </button>
+        <button
+          onClick={() => setActiveTab('travel')}
+          className={`flex-1 py-3 rounded-xl font-black text-[13px] border-[2.2px] transition-all uppercase tracking-wider ${
+            activeTab === 'travel'
+              ? 'bg-primary-coral text-border-color border-border-color shadow-neo'
+              : 'bg-bg-primary text-text-secondary border-border-color/30 hover:bg-bg-primary/80'
+          }`}
+        >
+          Chuyến đi kỷ niệm
+        </button>
+      </div>
+
       <div className="p-5 pb-[92px] w-full flex flex-col flex-1 relative">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start w-full">
-          {/* Milestones Timeline - Spans 2 columns on desktop */}
-          <div className="md:col-span-2 flex flex-col gap-4 order-2 md:order-1">
-
-            {/* ── UPCOMING ── */}
+          {/* Main Content */}
+          <div className={`flex flex-col gap-4 order-2 md:order-1 ${activeTab === 'milestones' ? 'md:col-span-2' : 'md:col-span-3'}`}>
+            
+            {activeTab === 'milestones' ? (
+              <>
+                {/* ── UPCOMING ── */}
             <div className="bg-bg-card border-[2.2px] border-border-color rounded-2xl shadow-neo overflow-hidden">
               {/* Header */}
               <div className="flex items-center justify-between px-4 py-3 border-b-[2px] border-border-color/30 bg-primary-coral/5">
                 <h3 className="text-[12px] font-extrabold text-text-primary uppercase tracking-wider flex items-center gap-2">
                   <Clock size={14} className="text-primary-coral" /> Kỷ niệm sắp tới
                 </h3>
-                <span className="text-[11px] font-bold text-text-secondary bg-border-color/10 px-2 py-0.5 rounded-full">
-                  {upcoming.length} mốc
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setIsOpenAddModal(true)}
+                    className="bg-primary-coral text-border-color font-extrabold text-[10px] border-[1.5px] border-border-color rounded-full px-2.5 py-1 hover:bg-primary-coral/90 transition-colors cursor-pointer flex items-center gap-1"
+                  >
+                    <Plus size={12} /> Thêm sự kiện
+                  </button>
+                  <span className="text-[11px] font-bold text-text-secondary bg-border-color/10 px-2 py-0.5 rounded-full">
+                    {upcoming.length} mốc
+                  </span>
+                </div>
               </div>
               {/* Scrollable body with fixed height */}
               <div className="overflow-y-auto max-h-[360px] p-3 flex flex-col gap-2
@@ -421,6 +725,16 @@ export const MilestonesScreen: React.FC = () => {
                     <div key={`up-${idx}`} className="bg-bg-primary border-[1.5px] border-border-color/50 rounded-xl p-3.5 flex flex-col gap-2 transition-all duration-200">
                       {/* Main Row Content */}
                       <div className="flex justify-between items-center gap-3">
+                        {isSyncMode && (
+                          <div className="shrink-0 flex items-center justify-center">
+                            <input 
+                              type="checkbox" 
+                              checked={selectedForSync.includes(mKey)} 
+                              onChange={() => toggleSyncSelection(mKey)}
+                              className="w-4 h-4 rounded-sm border-2 border-border-color accent-primary-coral cursor-pointer"
+                            />
+                          </div>
+                        )}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-extrabold text-[14px] truncate">{item.title}</span>
@@ -745,7 +1059,7 @@ export const MilestonesScreen: React.FC = () => {
                                 <button
                                   onClick={() => handleAddPlan(item.title, item.id)}
                                   disabled={isAddingPlan}
-                                  className="bg-primary-coral text-border-color border border-border-color font-bold text-xs px-3 py-1.5 rounded-lg cursor-pointer transition-all duration-100 hover:translate-x-[1px] hover:translate-y-[1px] select-none h-[32px] flex items-center justify-center"
+                                  className="bg-primary-coral text-border-color font-bold text-xs px-3 py-1.5 rounded-lg cursor-pointer transition-all duration-100 hover:translate-x-[1px] hover:translate-y-[1px] select-none h-[32px] flex items-center justify-center"
                                 >
                                   {isAddingPlan ? '...' : '+ Thêm'}
                                 </button>
@@ -759,7 +1073,9 @@ export const MilestonesScreen: React.FC = () => {
                 </div>
               </div>
             )}
-
+              </>
+            ) : (
+              <>
             {/* ── DAILY EVENTS / JOURNEYS ── */}
             <div className="bg-bg-card border-[2.2px] border-border-color rounded-2xl shadow-neo overflow-hidden">
               {/* Header */}
@@ -826,11 +1142,231 @@ export const MilestonesScreen: React.FC = () => {
                 ))}
               </div>
             </div>
+
+            {/* ── SỔ TAY DU LỊCH CỦA HAI ĐỨA ── */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 mb-2">
+              <div className="bg-bg-card border-[2.2px] border-border-color rounded-xl py-2 px-3 shadow-neo flex flex-col items-center justify-center gap-0.5 transition-transform hover:-translate-y-1">
+                <Plane size={16} className="text-primary-coral mb-0.5" />
+                <span className="text-[18px] font-black text-text-primary">{travelStats.totalTrips}</span>
+                <span className="text-[9px] font-extrabold text-text-secondary uppercase">Chuyến đi</span>
+              </div>
+              <div className="bg-bg-card border-[2.2px] border-border-color rounded-xl py-2 px-3 shadow-neo flex flex-col items-center justify-center gap-0.5 transition-transform hover:-translate-y-1">
+                <MapPin size={16} className="text-secondary-mint mb-0.5" />
+                <span className="text-[18px] font-black text-text-primary">{travelStats.uniqueLocations}</span>
+                <span className="text-[9px] font-extrabold text-text-secondary uppercase">Địa điểm</span>
+              </div>
+              <div className="bg-bg-card border-[2.2px] border-border-color rounded-xl py-2 px-3 shadow-neo flex flex-col items-center justify-center gap-0.5 transition-transform hover:-translate-y-1">
+                <Compass size={16} className="text-[#FBBF24] mb-0.5" />
+                <span className="text-[18px] font-black text-text-primary">{travelStats.domesticCount}</span>
+                <span className="text-[9px] font-extrabold text-text-secondary uppercase">Trong nước</span>
+              </div>
+              <div className="bg-bg-card border-[2.2px] border-border-color rounded-xl py-2 px-3 shadow-neo flex flex-col items-center justify-center gap-0.5 transition-transform hover:-translate-y-1">
+                <Globe size={16} className="text-[#3B82F6] mb-0.5" />
+                <span className="text-[18px] font-black text-text-primary">{travelStats.internationalCount}</span>
+                <span className="text-[9px] font-extrabold text-text-secondary uppercase">Quốc gia</span>
+              </div>
+            </div>
+
+            <div className="bg-bg-card border-[2.2px] border-border-color rounded-2xl shadow-neo overflow-hidden">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-4 py-3 border-b-[2px] border-border-color/30 bg-text-primary/5 gap-3">
+                <h3 className="text-[14px] font-extrabold text-text-primary uppercase tracking-wider flex items-center gap-2">
+                  <Plane size={16} className="text-text-primary" /> Sổ tay du lịch của hai đứa
+                </h3>
+                
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                  <CustomDropdown
+                    value={tripFilter}
+                    onChange={setTripFilter}
+                    icon={MapPin}
+                    label="Lọc"
+                    options={[
+                      { value: 'all', label: 'Tất cả' },
+                      { value: 'domestic', label: 'Trong nước' },
+                      { value: 'international', label: 'Nước ngoài' },
+                    ]}
+                  />
+                  <CustomDropdown
+                    value={tripViewMode}
+                    onChange={setTripViewMode}
+                    icon={Compass}
+                    label="View"
+                    options={[
+                      { value: 'list', label: 'Danh sách' },
+                      { value: 'group', label: 'Địa điểm' },
+                    ]}
+                  />
+                  <CustomDropdown
+                    value={tripSort}
+                    onChange={setTripSort}
+                    icon={Clock}
+                    label="Sắp xếp"
+                    options={[
+                      { value: 'desc', label: 'Mới nhất' },
+                      { value: 'asc', label: 'Cũ nhất' },
+                    ]}
+                  />
+                  <button
+                    onClick={() => setIsOpenAddTripModal(true)}
+                    className="ml-auto sm:ml-2 bg-text-primary text-bg-primary font-extrabold text-[12px] border-[1.5px] border-border-color rounded-lg px-3 py-1.5 hover:bg-text-primary/90 transition-colors shadow-sm"
+                  >
+                    + Thêm chuyến
+                  </button>
+                </div>
+              </div>
+              
+              <div className="p-5 flex flex-col gap-6">
+                {filteredSortedTrips.length === 0 && (
+                  <div className="text-center text-text-secondary text-sm py-10">Chưa có chuyến đi nào phù hợp với bộ lọc 🥺</div>
+                )}
+                
+                {tripViewMode === 'group' ? (
+                  groupedTrips.map((group) => (
+                    <div key={group.location.id} className="flex flex-col gap-3">
+                      {/* Location Header */}
+                      <div className="flex items-center gap-3">
+                        <div className="h-[2px] flex-1 bg-border-color/20"></div>
+                        <div className="flex items-center gap-2 bg-border-color/10 px-4 py-1.5 rounded-full border border-border-color/20">
+                          <MapPin size={14} className="text-primary-coral" />
+                          <h4 className="font-black text-[15px] text-text-primary">{group.location.name}</h4>
+                          <span className="text-[10px] font-bold text-text-secondary bg-bg-card px-2 py-0.5 rounded-md border border-border-color/20 ml-1">
+                            {group.trips.length} chuyến
+                          </span>
+                        </div>
+                        <div className="h-[2px] flex-1 bg-border-color/20"></div>
+                      </div>
+                      
+                      {/* Trips List */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                        {group.trips.map(trip => {
+                          const loc = trip.location;
+                          return (
+                            <div key={trip.id} className="relative bg-bg-primary border-[1.5px] border-border-color/50 rounded-xl overflow-hidden shadow-neo flex flex-col group transition-transform hover:-translate-y-1">
+                              <div className="relative h-[110px] w-full overflow-hidden bg-border-color/10">
+                                {loc?.image_url ? (
+                                  <img src={loc.image_url} alt={loc.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center">
+                                    <Plane size={24} className="text-text-secondary/50" />
+                                  </div>
+                                )}
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+                                <div className="absolute top-2 right-2 flex gap-1">
+                                  <span className="text-[9px] bg-black/40 text-white px-2 py-0.5 rounded-full backdrop-blur-sm font-bold">
+                                    {loc?.type === 'province' ? 'Trong nước' : 'Nước ngoài'}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="p-3 flex flex-col gap-1.5 flex-1 relative">
+                                <div className="absolute -top-3 right-3 flex gap-2 z-10">
+                                  <button
+                                    onClick={() => handleEditTrip(trip)}
+                                    className="bg-bg-card text-text-secondary hover:text-primary-coral p-1.5 rounded-full shadow-md border border-border-color/20"
+                                  >
+                                    <Pencil size={12} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteTrip(trip.id!)}
+                                    className="bg-bg-card text-text-secondary hover:text-warning-coral p-1.5 rounded-full shadow-md border border-border-color/20"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                                <h5 className="font-extrabold text-[13px] text-text-primary pr-6 line-clamp-1" title={trip.title}>{trip.title}</h5>
+                                <div className="flex flex-col gap-1 mt-1">
+                                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-text-secondary/90 bg-bg-primary self-start px-2 py-0.5 rounded-md border border-border-color/20">
+                                    <Calendar size={10} />
+                                    <span>{formatShortDate(trip.start_date)}{trip.end_date && trip.end_date !== trip.start_date ? ` → ${formatShortDate(trip.end_date)}` : ''}</span>
+                                  </div>
+                                  {getTripDuration(trip.start_date, trip.end_date) && (
+                                    <span className="text-[9px] font-extrabold text-primary-coral bg-primary-coral/10 border border-primary-coral/20 px-2 py-0.5 rounded-full self-start">
+                                      {getTripDuration(trip.start_date, trip.end_date)}
+                                    </span>
+                                  )}
+                                </div>
+                                {trip.description && (
+                                  <p className="text-[11px] text-text-secondary line-clamp-2 mt-1 italic leading-relaxed">
+                                    "{trip.description}"
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    {filteredSortedTrips.map(trip => {
+                      const loc = trip.location;
+                      return (
+                        <div key={trip.id} className="relative bg-bg-primary border-[1.5px] border-border-color/50 rounded-xl overflow-hidden shadow-neo flex flex-col group transition-transform hover:-translate-y-1">
+                          <div className="relative h-[110px] w-full overflow-hidden bg-border-color/10">
+                            {loc?.image_url ? (
+                              <img src={loc.image_url} alt={loc.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <Plane size={24} className="text-text-secondary/50" />
+                              </div>
+                            )}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+                            <div className="absolute bottom-2 left-3 right-3 flex justify-between items-end">
+                              <h4 className="text-white font-black text-lg drop-shadow-md truncate">{loc?.name}</h4>
+                            </div>
+                            <div className="absolute top-2 right-2 flex gap-1">
+                              <span className="text-[9px] bg-black/40 text-white px-2 py-0.5 rounded-full backdrop-blur-sm font-bold">
+                                {loc?.type === 'province' ? 'Trong nước' : 'Nước ngoài'}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="p-3 flex flex-col gap-1.5 flex-1 relative">
+                            <div className="absolute -top-3 right-3 flex gap-2 z-10">
+                              <button
+                                onClick={() => handleEditTrip(trip)}
+                                className="bg-bg-card text-text-secondary hover:text-primary-coral p-1.5 rounded-full shadow-md border border-border-color/20"
+                              >
+                                <Pencil size={12} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteTrip(trip.id!)}
+                                className="bg-bg-card text-text-secondary hover:text-warning-coral p-1.5 rounded-full shadow-md border border-border-color/20"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                            <h5 className="font-extrabold text-[13px] text-text-primary pr-6 line-clamp-1" title={trip.title}>{trip.title}</h5>
+                            <div className="flex flex-col gap-1 mt-1">
+                              <div className="flex items-center gap-1.5 text-[10px] font-bold text-text-secondary/90 bg-bg-primary self-start px-2 py-0.5 rounded-md border border-border-color/20">
+                                <Calendar size={10} />
+                                <span>{formatShortDate(trip.start_date)}{trip.end_date && trip.end_date !== trip.start_date ? ` → ${formatShortDate(trip.end_date)}` : ''}</span>
+                              </div>
+                              {getTripDuration(trip.start_date, trip.end_date) && (
+                                <span className="text-[9px] font-extrabold text-primary-coral bg-primary-coral/10 border border-primary-coral/20 px-2 py-0.5 rounded-full self-start">
+                                  {getTripDuration(trip.start_date, trip.end_date)}
+                                </span>
+                              )}
+                            </div>
+                            {trip.description && (
+                              <p className="text-[11px] text-text-secondary line-clamp-2 mt-1 italic leading-relaxed">
+                                "{trip.description}"
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+              </>
+            )}
           </div>
 
           {/* Sidebar / Tools - Spans 1 column on desktop */}
-          <div className="flex flex-col gap-6 order-1 md:order-2">
-            <h3 className="text-[13px] font-extrabold text-text-secondary pl-2 mb-1 uppercase tracking-wider">Đồng bộ</h3>
+          {activeTab === 'milestones' && (
+            <div className="flex flex-col gap-6 order-1 md:order-2">
+              <h3 className="text-[13px] font-extrabold text-text-secondary pl-2 mb-1 uppercase tracking-wider">Đồng bộ</h3>
             {/* Calendar Sync Card */}
             <div className="bg-bg-card border-[2.2px] border-border-color rounded-2xl p-5 shadow-neo flex flex-col gap-4">
               <div className="flex items-center gap-3.5">
@@ -845,24 +1381,26 @@ export const MilestonesScreen: React.FC = () => {
               <button
                 onClick={handleSyncCalendar}
                 disabled={isSyncing}
-                className="w-full bg-primary-coral text-border-color font-extrabold text-xs border-[2.2px] border-border-color rounded-full py-2.5 cursor-pointer shadow-neo inline-flex items-center justify-center gap-2 transition-all duration-100 hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-neo-hover active:translate-x-[3px] active:translate-y-[3px] active:shadow-none select-none"
+                className={`w-full ${isSyncMode ? 'bg-secondary-mint text-text-primary' : 'bg-primary-coral text-border-color'} font-extrabold text-xs border-[2.2px] border-border-color rounded-full py-2.5 cursor-pointer shadow-neo inline-flex items-center justify-center gap-2 transition-all duration-100 hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-neo-hover active:translate-x-[3px] active:translate-y-[3px] active:shadow-none select-none`}
               >
-                {isSyncing ? 'Đồng bộ...' : 'Đồng bộ'}
+                {isSyncing ? 'Đồng bộ...' : isSyncMode ? `Xác nhận đồng bộ (${selectedForSync.length})` : 'Đồng bộ'}
               </button>
+              {isSyncMode && (
+                <button
+                  onClick={() => { setIsSyncMode(false); setSelectedForSync([]); }}
+                  className="w-full bg-bg-card text-text-secondary font-extrabold text-xs border-[2.2px] border-border-color rounded-full py-2.5 cursor-pointer shadow-neo inline-flex items-center justify-center gap-2 transition-all duration-100 hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-neo-hover active:translate-x-[3px] active:translate-y-[3px] active:shadow-none select-none mt-2"
+                >
+                  Hủy
+                </button>
+              )}
             </div>
           </div>
+          )}
         </div>
 
-        {/* Floating Action Button */}
-        <button
-          onClick={() => setIsOpenAddModal(true)}
-          className="fixed bottom-[92px] right-6 md:right-[calc(50%-560px)] bg-primary-coral text-border-color font-extrabold text-[13px] border-[2.2px] border-border-color rounded-full px-5 py-3 cursor-pointer shadow-neo inline-flex items-center justify-center gap-2 transition-all duration-100 hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-neo-hover active:translate-x-[3px] active:translate-y-[3px] active:shadow-none select-none z-10"
-        >
-          <Plus size={16} /> Thêm sự kiện
-        </button>
+        {/* Add Custom Milestone Modal */}
       </div>
 
-      {/* Sync Success Modal */}
       {showSyncSuccess && (
         <div className="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center p-5">
           <div className="bg-bg-card border-[2.2px] border-border-color rounded-2xl p-6 mb-4 shadow-neo w-full max-w-[380px]">
@@ -1005,6 +1543,107 @@ export const MilestonesScreen: React.FC = () => {
               >
                 {isAddingEvent ? 'Đang thêm...' : 'Thêm'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Travel Trip Modal */}
+      {isOpenAddTripModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-text-primary/20 backdrop-blur-sm animate-fade-in">
+          <div className="bg-bg-primary w-full max-w-md rounded-2xl border-[2.5px] border-border-color shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] overflow-hidden flex flex-col">
+            <div className="bg-text-primary p-4 border-b-[2px] border-border-color flex justify-between items-center">
+              <h3 className="font-black text-bg-primary text-lg flex items-center gap-2">
+                <Plane size={20} /> {editingTripId ? 'Sửa nhật ký chuyến đi' : 'Thêm nhật ký chuyến đi'}
+              </h3>
+              <button 
+                onClick={() => setIsOpenAddTripModal(false)}
+                className="w-8 h-8 rounded-full bg-bg-primary/20 text-bg-primary hover:bg-bg-primary/30 flex items-center justify-center font-bold"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="p-5 flex flex-col gap-4">
+              <div>
+                <label className="block text-[11px] font-extrabold text-text-secondary uppercase mb-1.5 ml-1">Tiêu đề chuyến đi <span className="text-warning-coral">*</span></label>
+                <input
+                  type="text"
+                  value={tripTitle}
+                  onChange={e => setTripTitle(e.target.value)}
+                  placeholder="Ví dụ: Nghỉ dưỡng cuối tuần Đà Lạt"
+                  className="w-full bg-bg-card border-[2px] border-border-color rounded-xl px-4 py-3 text-sm font-semibold outline-none focus:border-text-primary transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-extrabold text-text-secondary uppercase mb-1.5 ml-1">Địa điểm <span className="text-warning-coral">*</span></label>
+                <CustomDropdown
+                  value={tripLocationId}
+                  onChange={(val: any) => setTripLocationId(val ? Number(val) : null)}
+                  icon={MapPin}
+                  fullWidth={true}
+                  options={[
+                    { value: null, label: '-- Chọn địa điểm du lịch --' },
+                    ...locations.filter(l => l.type === 'province').map(l => ({ value: l.id, label: `${l.name}` })),
+                    ...locations.filter(l => l.type === 'country').map(l => ({ value: l.id, label: `${l.name}` }))
+                  ]}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-extrabold text-text-secondary uppercase mb-1.5 ml-1">Ngày đi <span className="text-warning-coral">*</span></label>
+                  <input
+                    type="date"
+                    value={tripStartDate}
+                    onChange={e => {
+                      const newDate = e.target.value;
+                      setTripStartDate(newDate);
+                      if (!tripEndDate || new Date(tripEndDate) < new Date(newDate)) {
+                        setTripEndDate(newDate);
+                      }
+                    }}
+                    className="w-full bg-bg-card border-[2px] border-border-color rounded-xl px-3 py-3 text-sm font-semibold outline-none focus:border-text-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-extrabold text-text-secondary uppercase mb-1.5 ml-1">Ngày về <span className="text-warning-coral">*</span></label>
+                  <input
+                    type="date"
+                    value={tripEndDate}
+                    onChange={e => setTripEndDate(e.target.value)}
+                    className="w-full bg-bg-card border-[2px] border-border-color rounded-xl px-3 py-3 text-sm font-semibold outline-none focus:border-text-primary"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-extrabold text-text-secondary uppercase mb-1.5 ml-1">Mô tả / Cảm nhận</label>
+                <textarea
+                  value={tripDescription}
+                  onChange={e => setTripDescription(e.target.value)}
+                  placeholder="Ghi lại những khoảnh khắc đáng nhớ..."
+                  rows={3}
+                  className="w-full bg-bg-card border-[2px] border-border-color rounded-xl px-4 py-3 text-sm font-semibold outline-none focus:border-text-primary transition-colors resize-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 mt-2">
+                <button
+                  onClick={() => setIsOpenAddTripModal(false)}
+                  className="bg-bg-primary text-text-primary font-extrabold text-[13px] border-[2.2px] border-border-color rounded-xl px-5 py-3 cursor-pointer shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] inline-flex items-center justify-center transition-all duration-100 hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none select-none"
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={handleAddTrip}
+                  disabled={isAddingTrip || !tripTitle.trim() || !tripStartDate || !tripEndDate || !tripLocationId}
+                  className="flex-1 bg-primary-coral text-bg-primary font-extrabold text-[14px] border-[2.2px] border-border-color rounded-xl px-4 py-3 cursor-pointer shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] inline-flex items-center justify-center gap-2 transition-all duration-100 hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none select-none disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isAddingTrip ? 'Đang lưu...' : (editingTripId ? 'Cập nhật' : 'Lưu kỷ niệm')}
+                </button>
+              </div>
             </div>
           </div>
         </div>

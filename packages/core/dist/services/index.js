@@ -1,4 +1,5 @@
-import { supabase } from '../supabaseClient';
+import { supabase, cosmosSupabase } from '../supabaseClient';
+import { MOCK_ZODIAC_SIGNS, MOCK_ZODIAC_CRITERIA, MOCK_ZODIAC_DETAILS, MOCK_ZODIAC_MATCHES, MOCK_ZODIAC_ATTRIBUTES } from './zodiacMockData';
 import { DatabaseConstants } from '../constants/databaseConstants';
 import { mapProfileFromDb, mapProfileToDb, mapCoupleFromDb, mapUserStatusFromDb, mapUserSizeFromDb, mapBobaPreferenceFromDb, mapFavoriteFromDb, mapHobbyFromDb, mapMilestoneFromDb, mapReminderFromDb, mapReminderToDb, mapReminderLogFromDb, mapLoveDiaryFromDb, mapLoveDiaryToDb, mapDiaryMediaFromDb, mapWidgetSettingFromDb, mapPartnerProfileNoteFromDb, mapPartnerProfileNoteToDb, mapCoupleEventFromDb, mapCoupleEventToDb, mapUserMoodLogFromDb, mapUserMoodLogToDb, mapCoupleCountdownCustomizationFromDb, mapCoupleCountdownCustomizationToDb, mapMilestonePlanFromDb, mapDailyWishFromDb } from '../models';
 export class CoupleService {
@@ -702,3 +703,120 @@ export class DailyWishService {
         }
     }
 }
+export class ZodiacService {
+    async fetchZodiacSigns() {
+        try {
+            const { data, error } = await cosmosSupabase
+                .from('zodiac_signs')
+                .select('*')
+                .order('id', { ascending: true });
+            if (error || !data || data.length === 0) {
+                return MOCK_ZODIAC_SIGNS;
+            }
+            return data;
+        }
+        catch {
+            return MOCK_ZODIAC_SIGNS;
+        }
+    }
+    async fetchZodiacDetails(zodiacId) {
+        try {
+            const { data, error } = await cosmosSupabase
+                .from('zodiac_details')
+                .select('*')
+                .eq('zodiac_id', zodiacId);
+            if (error || !data || data.length === 0) {
+                return MOCK_ZODIAC_DETAILS.filter(d => d.zodiac_id === zodiacId);
+            }
+            return data;
+        }
+        catch {
+            return MOCK_ZODIAC_DETAILS.filter(d => d.zodiac_id === zodiacId);
+        }
+    }
+    async fetchZodiacMatch(id1, id2) {
+        try {
+            const { data, error } = await cosmosSupabase
+                .from('zodiac_matches')
+                .select('*')
+                .or(`and(zodiac_sign_1_id.eq.${id1},zodiac_sign_2_id.eq.${id2}),and(zodiac_sign_1_id.eq.${id2},zodiac_sign_2_id.eq.${id1})`)
+                .maybeSingle();
+            if (error || !data) {
+                const found = MOCK_ZODIAC_MATCHES.find(m => (m.zodiac_sign_1_id === id1 && m.zodiac_sign_2_id === id2) ||
+                    (m.zodiac_sign_1_id === id2 && m.zodiac_sign_2_id === id1));
+                return found || null;
+            }
+            return data;
+        }
+        catch {
+            const found = MOCK_ZODIAC_MATCHES.find(m => (m.zodiac_sign_1_id === id1 && m.zodiac_sign_2_id === id2) ||
+                (m.zodiac_sign_1_id === id2 && m.zodiac_sign_2_id === id1));
+            return found || null;
+        }
+    }
+    async fetchZodiacCriteria() {
+        try {
+            const { data, error } = await cosmosSupabase
+                .from('zodiac_criteria')
+                .select('*')
+                .order('id', { ascending: true });
+            if (error || !data || data.length === 0) {
+                return MOCK_ZODIAC_CRITERIA;
+            }
+            return data;
+        }
+        catch {
+            return MOCK_ZODIAC_CRITERIA;
+        }
+    }
+    async fetchZodiacAttributes(id1, id2) {
+        try {
+            const { data, error } = await cosmosSupabase
+                .from('zodiac_attributes')
+                .select('*')
+                .in('zodiac_id', [id1, id2]);
+            if (error || !data || data.length === 0) {
+                return MOCK_ZODIAC_ATTRIBUTES.filter(a => a.zodiac_id === id1 || a.zodiac_id === id2);
+            }
+            return data;
+        }
+        catch {
+            return MOCK_ZODIAC_ATTRIBUTES.filter(a => a.zodiac_id === id1 || a.zodiac_id === id2);
+        }
+    }
+}
+export function getZodiacSignIdFromDob(dobString) {
+    if (!dobString)
+        return 10; // Default Ma Kết (Capricorn)
+    const date = new Date(dobString);
+    if (isNaN(date.getTime()))
+        return 10;
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    if ((month === 3 && day >= 21) || (month === 4 && day <= 19))
+        return 1; // Aries / Bạch Dương
+    if ((month === 4 && day >= 20) || (month === 5 && day <= 20))
+        return 2; // Taurus / Kim Ngưu
+    if ((month === 5 && day >= 21) || (month === 6 && day <= 20))
+        return 3; // Gemini / Song Tử
+    if ((month === 6 && day >= 21) || (month === 7 && day <= 22))
+        return 4; // Cancer / Cự Giải
+    if ((month === 7 && day >= 23) || (month === 8 && day <= 22))
+        return 5; // Leo / Sư Tử
+    if ((month === 8 && day >= 23) || (month === 9 && day <= 22))
+        return 6; // Virgo / Xử Nữ
+    if ((month === 9 && day >= 23) || (month === 10 && day <= 22))
+        return 7; // Libra / Thiên Bình
+    if ((month === 10 && day >= 23) || (month === 11 && day <= 21))
+        return 8; // Scorpio / Bọ Cạp
+    if ((month === 11 && day >= 22) || (month === 12 && day <= 21))
+        return 9; // Sagittarius / Nhân Mã
+    if ((month === 12 && day >= 22) || (month === 1 && day <= 19))
+        return 10; // Capricorn / Ma Kết
+    if ((month === 1 && day >= 20) || (month === 2 && day <= 18))
+        return 11; // Aquarius / Bảo Bình
+    if ((month === 2 && day >= 19) || (month === 3 && day <= 20))
+        return 12; // Pisces / Song Ngư
+    return 10;
+}
+export * from './travelService';

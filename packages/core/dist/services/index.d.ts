@@ -1,3 +1,4 @@
+import { ZodiacSign, ZodiacCriteria, ZodiacDetail, ZodiacMatch, ZodiacAttribute } from './zodiacMockData';
 import { UserProfile, Couple, UserStatus, UserSize, UserBobaPreference, UserFavorite, UserHobby, Milestone, Reminder, ReminderLog, LoveDiary, DiaryMedia, WidgetSetting, PairingCode, PartnerProfileNote, CoupleEvent, UserMoodLog, CoupleCountdownCustomization, MilestonePlan, DailyWish } from '../models';
 export declare class CoupleService {
     fetchActiveCouple(userId: string): Promise<Couple | null>;
@@ -100,3 +101,13 @@ export declare class MilestonePlanService {
 export declare class DailyWishService {
     fetchAllWishes(): Promise<DailyWish[]>;
 }
+export declare class ZodiacService {
+    fetchZodiacSigns(): Promise<ZodiacSign[]>;
+    fetchZodiacDetails(zodiacId: number): Promise<ZodiacDetail[]>;
+    fetchZodiacMatch(id1: number, id2: number): Promise<ZodiacMatch | null>;
+    fetchZodiacCriteria(): Promise<ZodiacCriteria[]>;
+    fetchZodiacAttributes(id1: number, id2: number): Promise<ZodiacAttribute[]>;
+}
+export declare function getZodiacSignIdFromDob(dobString?: string): number;
+export { ZodiacSign, ZodiacCriteria, ZodiacDetail, ZodiacMatch, ZodiacAttribute };
+export * from './travelService';

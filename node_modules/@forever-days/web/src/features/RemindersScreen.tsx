@@ -70,14 +70,30 @@ export const RemindersScreen: React.FC = () => {
       // Sáng: có thể gửi trong khoảng ±5 phút so với giờ cài
       if (!sentMorning && Math.abs(nowMs - morningMs) < 5 * 60 * 1000) {
         if (Notification.permission === 'granted') {
-          new Notification('☀️ Lời chúc buổi sáng ngọt ngào!', { body: wishContent, icon: '/favicon.ico' });
+          try {
+            new Notification('☀️ Lời chúc buổi sáng ngọt ngào!', { body: wishContent, icon: '/favicon.png' });
+          } catch (e) {
+            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+              navigator.serviceWorker.ready.then(reg => {
+                reg.showNotification('☀️ Lời chúc buổi sáng ngọt ngào!', { body: wishContent, icon: '/favicon.png' }).catch(() => {});
+              });
+            }
+          }
           localStorage.setItem(`wish_sent_morning_${todayKey}`, '1');
         }
       }
       // Tối
       if (!sentEvening && Math.abs(nowMs - eveningMs) < 5 * 60 * 1000) {
         if (Notification.permission === 'granted') {
-          new Notification('🌙 Lời chúc buổi tối dịu dàng!', { body: wishContent, icon: '/favicon.ico' });
+          try {
+            new Notification('🌙 Lời chúc buổi tối dịu dàng!', { body: wishContent, icon: '/favicon.png' });
+          } catch (e) {
+            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+              navigator.serviceWorker.ready.then(reg => {
+                reg.showNotification('🌙 Lời chúc buổi tối dịu dàng!', { body: wishContent, icon: '/favicon.png' }).catch(() => {});
+              });
+            }
+          }
           localStorage.setItem(`wish_sent_evening_${todayKey}`, '1');
         }
       }
@@ -265,11 +281,10 @@ export const RemindersScreen: React.FC = () => {
     };
 
     try {
-      await fetch('https://exp.host/--/api/v2/push/send', {
+      // Sử dụng corsproxy.io để vượt qua lỗi CORS trên Web khi gửi qua expo push service
+      await fetch('https://corsproxy.io/?url=' + encodeURIComponent('https://exp.host/--/api/v2/push/send'), {
         method: 'POST',
         headers: {
-          Accept: 'application/json',
-          'Accept-encoding': 'gzip, deflate',
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(message),
@@ -319,21 +334,99 @@ export const RemindersScreen: React.FC = () => {
 
   // Trigger web desktop alert
   const triggerInstantNotification = (title: string, body: string) => {
+    console.log('Nút Thử Ngay đã được bấm!');
+    const showFallback = () => {
+      // Tự dựng Toast HTML đẹp mắt thay vì dùng alert (tránh bị Chrome chặn alert hàng loạt)
+      const toast = document.createElement('div');
+      toast.style.position = 'fixed';
+      toast.style.bottom = '24px';
+      toast.style.right = '24px';
+      toast.style.backgroundColor = '#FF6F61'; // primary-coral color
+      toast.style.color = '#3D2F3D'; // text-primary
+      toast.style.border = '2.2px solid #3D2F3D';
+      toast.style.padding = '14px 20px';
+      toast.style.borderRadius = '16px';
+      toast.style.boxShadow = '4px 4px 0px #3D2F3D'; // shadow-neo
+      toast.style.fontFamily = 'system-ui, -apple-system, sans-serif';
+      toast.style.fontWeight = '800';
+      toast.style.fontSize = '12px';
+      toast.style.zIndex = '9999';
+      toast.style.transition = 'all 0.3s ease';
+      toast.style.transform = 'translateY(100px)';
+      toast.style.opacity = '0';
+      toast.style.display = 'flex';
+      toast.style.flexDirection = 'col-reverse';
+      toast.style.gap = '4px';
+
+      toast.innerHTML = `
+        <div style="font-weight: 800; font-size: 13px;">🔔 [Báo thức]: ${title}</div>
+        <div style="font-weight: 500; font-size: 11px; margin-top: 4px; opacity: 0.9;">${body}</div>
+      `;
+      document.body.appendChild(toast);
+
+      // Animate in
+      setTimeout(() => {
+        toast.style.transform = 'translateY(0)';
+        toast.style.opacity = '1';
+      }, 50);
+
+      // Animate out and remove
+      setTimeout(() => {
+        toast.style.transform = 'translateY(100px)';
+        toast.style.opacity = '0';
+        setTimeout(() => {
+          if (document.body.contains(toast)) {
+            document.body.removeChild(toast);
+          }
+        }, 300);
+      }, 4500);
+    };
+
     if (!('Notification' in window)) {
-      alert(`[Báo thức]: ${title}\n${body}`);
+      showFallback();
       return;
     }
 
-    if (Notification.permission === 'granted') {
-      new Notification(title, { body, icon: '/favicon.ico' });
-    } else {
-      Notification.requestPermission().then(permission => {
-        if (permission === 'granted') {
-          new Notification(title, { body });
+    const tryShowNotification = () => {
+      try {
+        new Notification(title, { body, icon: '/favicon.png' });
+      } catch (e) {
+        // Fallback cho trình duyệt di động hoặc môi trường ném lỗi Illegal constructor
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.ready.then(reg => {
+            reg.showNotification(title, { body, icon: '/favicon.png' }).catch(() => {
+              showFallback();
+            });
+          }).catch(() => {
+            showFallback();
+          });
         } else {
-          alert(`[Báo thức]: ${title}\n${body}`);
+          showFallback();
         }
-      });
+      }
+    };
+
+    try {
+      // Luôn luôn hiển thị Toast trực tiếp trong app để người dùng nhận được phản hồi ngay lập tức
+      showFallback();
+
+      if (Notification.permission === 'granted') {
+        tryShowNotification();
+      } else if (Notification.permission !== 'denied') {
+        // Tương thích ngược: Một số trình duyệt cũ (Safari) không trả về Promise cho requestPermission
+        const handlePermission = (permission: NotificationPermission) => {
+          if (permission === 'granted') {
+            tryShowNotification();
+          }
+        };
+
+        const result = Notification.requestPermission(handlePermission);
+        if (result && typeof result.then === 'function') {
+          result.then(handlePermission).catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.error('Lỗi khi kích hoạt thông báo:', err);
     }
   };
 

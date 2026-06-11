@@ -12,6 +12,35 @@ export interface UserProfile {
   updatedAt?: string;
 }
 
+export interface ZodiacMatchResult {
+  matchPercentage: number;
+  details: string;
+}
+
+export interface TravelLocation {
+  id: number;
+  name: string;
+  type: 'province' | 'country';
+  country: string;
+  image_url: string;
+  created_at?: string;
+}
+
+export interface TravelTrip {
+  id?: string;
+  couple_id: string;
+  location_id: number;
+  title: string;
+  start_date: string;
+  end_date: string;
+  description?: string;
+  created_at?: string;
+  updated_at?: string;
+  
+  // Joined relation for UI convenience
+  location?: TravelLocation;
+}
+
 export interface UserStatus {
   id: string;
   userId: string;

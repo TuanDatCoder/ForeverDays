@@ -1,17 +1,86 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { RelationshipProvider, useRelationship } from './core/RelationshipContext';
+import { supabase } from '@forever-days/core';
 import { AuthScreen } from './features/AuthScreen';
 import { HomeScreen } from './features/HomeScreen';
 import { MilestonesScreen } from './features/MilestonesScreen';
 import { RemindersScreen } from './features/RemindersScreen';
+import { CosmosScreen } from './features/CosmosScreen';
 import { ProfileScreen } from './features/ProfileScreen';
-import { Heart, Calendar, Bell, User } from 'lucide-react';
+import { Heart, Calendar, Bell, User, Sparkles } from 'lucide-react';
 
-type TabType = 'home' | 'milestones' | 'reminders' | 'profile';
+type TabType = 'home' | 'milestones' | 'reminders' | 'cosmos' | 'profile';
 
 const AppContent: React.FC = () => {
-  const { user, isDemoMode, isLoading } = useRelationship();
+  const { user, isDemoMode, isLoading, coupleId, partner } = useRelationship();
   const [activeTab, setActiveTab] = useState<TabType>('home');
+
+  // Listen to signal channel globally
+  useEffect(() => {
+    if (isDemoMode || !coupleId || !user?.id) return;
+
+    const triggerGlobalNotification = (title: string, body: string) => {
+      const toast = document.createElement('div');
+      toast.style.position = 'fixed';
+      toast.style.bottom = '24px';
+      toast.style.right = '24px';
+      toast.style.backgroundColor = '#FF6F61';
+      toast.style.color = '#3D2F3D';
+      toast.style.border = '2.2px solid #3D2F3D';
+      toast.style.padding = '14px 20px';
+      toast.style.borderRadius = '16px';
+      toast.style.boxShadow = '4px 4px 0px #3D2F3D';
+      toast.style.fontFamily = 'system-ui, -apple-system, sans-serif';
+      toast.style.fontWeight = '800';
+      toast.style.fontSize = '12px';
+      toast.style.zIndex = '9999';
+      toast.style.transition = 'all 0.3s ease';
+      toast.style.transform = 'translateY(100px)';
+      toast.style.opacity = '0';
+      toast.style.display = 'flex';
+      toast.style.flexDirection = 'column-reverse';
+      toast.style.gap = '4px';
+
+      toast.innerHTML = `
+        <div style="font-weight: 800; font-size: 13px;">🔔 ${title}</div>
+        <div style="font-weight: 500; font-size: 11px; margin-top: 4px; opacity: 0.9;">${body}</div>
+      `;
+      document.body.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.transform = 'translateY(0)';
+        toast.style.opacity = '1';
+      }, 50);
+
+      setTimeout(() => {
+        toast.style.transform = 'translateY(100px)';
+        toast.style.opacity = '0';
+        setTimeout(() => {
+          if (document.body.contains(toast)) {
+            document.body.removeChild(toast);
+          }
+        }, 300);
+      }, 4500);
+    };
+
+    const channel = supabase.channel(`couple_signals_${coupleId}`)
+      .on('broadcast', { event: 'signal' }, ({ payload }) => {
+        if (payload.senderId !== user.id) {
+          const senderName = partner?.nickname || 'Nửa kia';
+          const title = payload.type === 'love' ? 'Tín hiệu yêu thương! 💕' : 'Ai đó đang chọc bạn! 🤪';
+          const body = payload.type === 'love'
+            ? `${senderName} đang nhớ bạn rất nhiều! 🥰`
+            : `${senderName} vừa chọc ghẹo bạn một cái! 🤪`;
+
+          triggerGlobalNotification(title, body);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [coupleId, user?.id, partner, isDemoMode]);
 
   if (isLoading) {
     return (
@@ -45,6 +114,8 @@ const AppContent: React.FC = () => {
         return <MilestonesScreen />;
       case 'reminders':
         return <RemindersScreen />;
+      case 'cosmos':
+        return <CosmosScreen />;
       case 'profile':
         return <ProfileScreen />;
       case 'home':
@@ -98,6 +169,18 @@ const AppContent: React.FC = () => {
             >
               <Calendar size={18} fill={activeTab === 'milestones' ? '#ff6584' : 'none'} className="shrink-0" />
               <span>Cột mốc kỷ niệm</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('cosmos')}
+              className={`flex items-center gap-3.5 px-4.5 py-3 rounded-xl border-[2.2px] font-extrabold text-[13px] transition-all cursor-pointer shadow-none hover:translate-x-[2px] hover:translate-y-[2px] ${
+                activeTab === 'cosmos'
+                  ? 'bg-primary-coral text-border-color border-border-color shadow-neo-hover'
+                  : 'bg-bg-primary text-text-primary border-transparent hover:border-border-color'
+              }`}
+            >
+              <Sparkles size={18} fill={activeTab === 'cosmos' ? '#ff6584' : 'none'} className="shrink-0" />
+              <span>Góc Vũ Trụ</span>
             </button>
 
             <button
@@ -172,6 +255,14 @@ const AppContent: React.FC = () => {
         >
           <Calendar fill={activeTab === 'milestones' ? '#ff6584' : 'none'} />
           <span>Cột mốc</span>
+        </div>
+
+        <div
+          onClick={() => setActiveTab('cosmos')}
+          className={getTabItemClass('cosmos')}
+        >
+          <Sparkles fill={activeTab === 'cosmos' ? '#ff6584' : 'none'} />
+          <span>Vũ Trụ</span>
         </div>
 
         <div

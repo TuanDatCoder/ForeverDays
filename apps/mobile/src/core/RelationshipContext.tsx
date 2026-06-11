@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   supabase,
   CoupleService, ProfileService, PairingCodeService
@@ -51,8 +52,35 @@ const MOCK_PARTNER: UserProfile = {
   gender: 'Nữ',
 };
 
-// In-memory fallback storage for Demo Mode in React Native
-const demoStorage: Record<string, string> = {};
+// In-memory fallback storage for Demo Mode in React Native, proxied to AsyncStorage
+const demoStorageTarget: Record<string, string> = {};
+
+export const loadDemoStorageFromAsyncStorage = async () => {
+  try {
+    const data = await AsyncStorage.getItem('DEMO_STORAGE');
+    if (data) {
+      const parsed = JSON.parse(data);
+      for (const key in parsed) {
+        demoStorageTarget[key] = parsed[key];
+      }
+    }
+  } catch (e) {
+    // console.error('Failed to load demo storage', e);
+  }
+};
+
+const demoStorage = new Proxy(demoStorageTarget, {
+  set: (target, prop: string, value) => {
+    target[prop] = value;
+    AsyncStorage.setItem('DEMO_STORAGE', JSON.stringify(target)).catch(() => {});
+    return true;
+  },
+  deleteProperty: (target, prop: string) => {
+    delete target[prop];
+    AsyncStorage.setItem('DEMO_STORAGE', JSON.stringify(target)).catch(() => {});
+    return true;
+  }
+});
 
 export const RelationshipProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = useState<RelationshipState>({
@@ -224,9 +252,10 @@ export const RelationshipProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const signOut = async () => {
     // Clear memory demo storage
-    for (const key in demoStorage) {
-      delete demoStorage[key];
+    for (const key in demoStorageTarget) {
+      delete demoStorageTarget[key];
     }
+    AsyncStorage.removeItem('DEMO_STORAGE').catch(() => {});
     try {
       await supabase.auth.signOut();
     } catch {}

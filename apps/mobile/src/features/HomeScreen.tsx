@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Share, Platform, ImageBackground, Alert } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRelationship, demoStorage } from '../core/RelationshipContext';
@@ -8,6 +8,7 @@ import type { UserMoodLog, CoupleCountdownCustomization, MilestonePlan, DailyWis
 import { Calendar, Edit3, Heart, RotateCw, Clock, Cake, Trash2 } from 'lucide-react-native';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 
 export const HomeScreen: React.FC = () => {
   const {
@@ -59,6 +60,8 @@ export const HomeScreen: React.FC = () => {
   const moodLogService = new UserMoodLogService();
   const customizationService = new CoupleCountdownCustomizationService();
 
+  const signalChannelRef = useRef<any>(null);
+
   const moodEmojis = [
     '😊', '🥰', '😍', '😘', '🥳', '😎', '😜', '😇',
     '🥺', '😢', '😭', '😡', '🤬', '😱', '😴', '🥱',
@@ -93,6 +96,23 @@ export const HomeScreen: React.FC = () => {
     }
   };
 
+  // Setup Realtime Broadcast channel for sending only
+  useEffect(() => {
+    if (isDemoMode || !coupleId || !user?.id) return;
+
+    const channel = supabase.channel(`couple_signals_${coupleId}`);
+    channel.subscribe();
+
+    signalChannelRef.current = channel;
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+      signalChannelRef.current = null;
+    };
+  }, [coupleId, user?.id, isDemoMode]);
+
   const handleSendLoveOrPoke = async (type: 'love' | 'poke') => {
     if (isDemoMode) {
       Alert.alert('Chế độ Demo', 'Ứng dụng đang ở chế độ Demo! Tính năng thông báo đẩy chỉ hoạt động ở chế độ kết nối cơ sở dữ liệu thật.');
@@ -104,6 +124,28 @@ export const HomeScreen: React.FC = () => {
     }
     setIsSendingTestNotification(true);
     try {
+      // 1. Broadcast real-time signal via Supabase (cho giao diện Web/App đang mở)
+      if (signalChannelRef.current) {
+        await signalChannelRef.current.send({
+          type: 'broadcast',
+          event: 'signal',
+          payload: { senderId: user?.id, type }
+        });
+      } else if (coupleId) {
+        const channel = supabase.channel(`couple_signals_${coupleId}`);
+        channel.subscribe(async (status) => {
+          if (status === 'SUBSCRIBED') {
+            await channel.send({
+              type: 'broadcast',
+              event: 'signal',
+              payload: { senderId: user?.id, type }
+            });
+            supabase.removeChannel(channel);
+          }
+        });
+      }
+
+      // 2. Gửi Push Notification (cho điện thoại khi tắt app)
       const tokenService = new UserPushTokenService();
       const partnerToken = await tokenService.fetchPushToken(partner.id);
       
@@ -116,11 +158,8 @@ export const HomeScreen: React.FC = () => {
         await sendPushNotification(partnerToken, title, body);
         Alert.alert('Thành công', type === 'love' ? 'Đã gửi yêu thương thành công đến đối phương! 💕' : 'Đã chọc ghẹo đối phương thành công! 🤪');
       } else {
-        Alert.alert(
-          'Không tìm thấy Token',
-          'Không tìm thấy mã đăng ký thông báo (Push Token) của đối phương!\n\n' +
-          'Lưu ý: Đối phương cần phải đăng nhập vào ứng dụng trên điện thoại ít nhất một lần để đăng ký thiết bị.'
-        );
+        // Vẫn báo thành công qua Realtime dù đối phương chưa đăng ký push token
+        Alert.alert('Thành công', type === 'love' ? 'Đã gửi yêu thương thành công đến đối phương! 💕' : 'Đã chọc ghẹo đối phương thành công! 🤪');
       }
     } catch (err: any) {
       console.error('Lỗi khi gửi tín hiệu:', err);
@@ -142,18 +181,26 @@ export const HomeScreen: React.FC = () => {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: field === 'background' ? [4, 3] : [1, 1],
-        quality: 0.7,
-        base64: true,
+        quality: 0.8,
       });
 
-      if (!result.canceled && result.assets?.[0]?.base64) {
-        const base64Uri = `data:image/jpeg;base64,${result.assets[0].base64}`;
-        if (field === 'avatar1') {
-          setThemeAvatar1(base64Uri);
-        } else if (field === 'avatar2') {
-          setThemeAvatar2(base64Uri);
-        } else {
-          setThemeBackground(base64Uri);
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        // Nén ảnh lại tránh nặng database
+        const manipResult = await ImageManipulator.manipulateAsync(
+          result.assets[0].uri,
+          [{ resize: { width: field === 'background' ? 800 : 200 } }],
+          { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+        );
+
+        if (manipResult.base64) {
+          const base64Uri = `data:image/jpeg;base64,${manipResult.base64}`;
+          if (field === 'avatar1') {
+            setThemeAvatar1(base64Uri);
+          } else if (field === 'avatar2') {
+            setThemeAvatar2(base64Uri);
+          } else {
+            setThemeBackground(base64Uri);
+          }
         }
       }
     } catch (error) {
@@ -814,7 +861,7 @@ export const HomeScreen: React.FC = () => {
                     user2Dob={partner?.dob || ''}
                     isCelebrationDay={nearestEvent?.daysRemaining === 0}
                   />
-                  <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, paddingBottom: 16, marginTop: -8 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, paddingBottom: 16, marginTop: -8, paddingHorizontal: 8 }}>
                     <TouchableOpacity
                       onPress={() => handleSendLoveOrPoke('love')}
                       disabled={isSendingTestNotification}
@@ -825,7 +872,7 @@ export const HomeScreen: React.FC = () => {
                         borderColor: AppTheme.borderColor,
                         borderRadius: 20,
                         paddingVertical: 6,
-                        paddingHorizontal: 12,
+                        paddingHorizontal: 10,
                         shadowColor: '#000000',
                         shadowOffset: { width: 1.5, height: 1.5 },
                         shadowOpacity: 1,
@@ -834,7 +881,7 @@ export const HomeScreen: React.FC = () => {
                         flexShrink: 0,
                       }}
                     >
-                      <Text style={{ fontSize: 11, fontWeight: '900', color: AppTheme.textPrimary }}>❤️ Nhớ nửa kia</Text>
+                      <Text numberOfLines={1} allowFontScaling={false} style={{ fontSize: 11, fontWeight: '900', color: AppTheme.textPrimary }}>❤️ Nhớ nửa kia</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => handleSendLoveOrPoke('poke')}
@@ -846,7 +893,7 @@ export const HomeScreen: React.FC = () => {
                         borderColor: AppTheme.borderColor,
                         borderRadius: 20,
                         paddingVertical: 6,
-                        paddingHorizontal: 12,
+                        paddingHorizontal: 10,
                         shadowColor: '#000000',
                         shadowOffset: { width: 1.5, height: 1.5 },
                         shadowOpacity: 1,
@@ -855,7 +902,7 @@ export const HomeScreen: React.FC = () => {
                         flexShrink: 0,
                       }}
                     >
-                      <Text style={{ fontSize: 11, fontWeight: '900', color: AppTheme.textPrimary }}>🤪 Chọc ghẹo</Text>
+                      <Text allowFontScaling={false} style={{ fontSize: 11, fontWeight: '900', color: AppTheme.textPrimary }}>🤪 Chọc ghẹo</Text>
                     </TouchableOpacity>
                   </View>
                 </ImageBackground>
@@ -871,7 +918,7 @@ export const HomeScreen: React.FC = () => {
                     user2Dob={partner?.dob || ''}
                     isCelebrationDay={nearestEvent?.daysRemaining === 0}
                   />
-                  <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, paddingBottom: 16, marginTop: -8 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, paddingBottom: 16, marginTop: -8, paddingHorizontal: 8 }}>
                     <TouchableOpacity
                       onPress={() => handleSendLoveOrPoke('love')}
                       disabled={isSendingTestNotification}
@@ -882,7 +929,7 @@ export const HomeScreen: React.FC = () => {
                         borderColor: AppTheme.borderColor,
                         borderRadius: 20,
                         paddingVertical: 6,
-                        paddingHorizontal: 12,
+                        paddingHorizontal: 10,
                         shadowColor: '#000000',
                         shadowOffset: { width: 1.5, height: 1.5 },
                         shadowOpacity: 1,
@@ -891,7 +938,7 @@ export const HomeScreen: React.FC = () => {
                         flexShrink: 0,
                       }}
                     >
-                      <Text style={{ fontSize: 11, fontWeight: '900', color: AppTheme.textPrimary }}>❤️ Nhớ nửa kia</Text>
+                      <Text allowFontScaling={false} style={{ fontSize: 11, fontWeight: '900', color: AppTheme.textPrimary }}>❤️ Nhớ nửa kia</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => handleSendLoveOrPoke('poke')}
@@ -903,7 +950,7 @@ export const HomeScreen: React.FC = () => {
                         borderColor: AppTheme.borderColor,
                         borderRadius: 20,
                         paddingVertical: 6,
-                        paddingHorizontal: 12,
+                        paddingHorizontal: 10,
                         shadowColor: '#000000',
                         shadowOffset: { width: 1.5, height: 1.5 },
                         shadowOpacity: 1,
@@ -912,7 +959,7 @@ export const HomeScreen: React.FC = () => {
                         flexShrink: 0,
                       }}
                     >
-                      <Text style={{ fontSize: 11, fontWeight: '900', color: AppTheme.textPrimary }}>🤪 Chọc ghẹo</Text>
+                      <Text allowFontScaling={false} style={{ fontSize: 11, fontWeight: '900', color: AppTheme.textPrimary }}>🤪 Chọc ghẹo</Text>
                     </TouchableOpacity>
                   </View>
                 </>

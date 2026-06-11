@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useRelationship } from '../core/RelationshipContext';
 import { HeartbeatConnector } from '../components/HeartbeatConnector';
 import { LogOut, Edit3, Calendar, Copy, Check, Smile, RotateCw, Heart, Clock, Cake, Trash2 } from 'lucide-react';
@@ -56,11 +56,103 @@ export const HomeScreen: React.FC = () => {
   const moodLogService = new UserMoodLogService();
   const customizationService = new CoupleCountdownCustomizationService();
 
+  const signalChannelRef = useRef<any>(null);
+
   const moodEmojis = [
     '😊', '🥰', '😍', '😘', '🥳', '😎', '😜', '😇',
     '🥺', '😢', '😭', '😡', '🤬', '😱', '😴', '🥱',
     '😷', '🤔', '🙄', '💖', '🍿', '🎮', '☕', '🥤'
   ];
+
+  const triggerInstantNotification = (title: string, body: string) => {
+    const showFallback = () => {
+      const toast = document.createElement('div');
+      toast.style.position = 'fixed';
+      toast.style.bottom = '24px';
+      toast.style.right = '24px';
+      toast.style.backgroundColor = '#FF6F61';
+      toast.style.color = '#3D2F3D';
+      toast.style.border = '2.2px solid #3D2F3D';
+      toast.style.padding = '14px 20px';
+      toast.style.borderRadius = '16px';
+      toast.style.boxShadow = '4px 4px 0px #3D2F3D';
+      toast.style.fontFamily = 'system-ui, -apple-system, sans-serif';
+      toast.style.fontWeight = '800';
+      toast.style.fontSize = '12px';
+      toast.style.zIndex = '9999';
+      toast.style.transition = 'all 0.3s ease';
+      toast.style.transform = 'translateY(100px)';
+      toast.style.opacity = '0';
+      toast.style.display = 'flex';
+      toast.style.flexDirection = 'col-reverse';
+      toast.style.gap = '4px';
+
+      toast.innerHTML = `
+        <div style="font-weight: 800; font-size: 13px;">🔔 ${title}</div>
+        <div style="font-weight: 500; font-size: 11px; margin-top: 4px; opacity: 0.9;">${body}</div>
+      `;
+      document.body.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.transform = 'translateY(0)';
+        toast.style.opacity = '1';
+      }, 50);
+
+      setTimeout(() => {
+        toast.style.transform = 'translateY(100px)';
+        toast.style.opacity = '0';
+        setTimeout(() => {
+          if (document.body.contains(toast)) {
+            document.body.removeChild(toast);
+          }
+        }, 300);
+      }, 4500);
+    };
+
+    if (!('Notification' in window)) {
+      showFallback();
+      return;
+    }
+
+    const tryShowNotification = () => {
+      try {
+        new Notification(title, { body, icon: '/favicon.png' });
+      } catch (e) {
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.ready.then(reg => {
+            reg.showNotification(title, { body, icon: '/favicon.png' }).catch(() => {
+              showFallback();
+            });
+          }).catch(() => {
+            showFallback();
+          });
+        } else {
+          showFallback();
+        }
+      }
+    };
+
+    try {
+      showFallback();
+
+      if (Notification.permission === 'granted') {
+        tryShowNotification();
+      } else if (Notification.permission !== 'denied') {
+        const handlePermission = (permission: NotificationPermission) => {
+          if (permission === 'granted') {
+            tryShowNotification();
+          }
+        };
+
+        const result = Notification.requestPermission(handlePermission);
+        if (result && typeof result.then === 'function') {
+          result.then(handlePermission).catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.error('Lỗi khi kích hoạt thông báo:', err);
+    }
+  };
 
   const sendPushNotification = async (expoPushToken: string, title: string, body: string) => {
     if (expoPushToken.startsWith('mock-')) {
@@ -76,11 +168,9 @@ export const HomeScreen: React.FC = () => {
     };
 
     try {
-      await fetch('https://exp.host/--/api/v2/push/send', {
+      await fetch('https://corsproxy.io/?url=' + encodeURIComponent('https://exp.host/--/api/v2/push/send'), {
         method: 'POST',
         headers: {
-          Accept: 'application/json',
-          'Accept-encoding': 'gzip, deflate',
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(message),
@@ -90,17 +180,56 @@ export const HomeScreen: React.FC = () => {
     }
   };
 
+  // Setup Realtime Broadcast channel for sending only
+  useEffect(() => {
+    if (isDemoMode || !coupleId || !user?.id) return;
+
+    const channel = supabase.channel(`couple_signals_${coupleId}`);
+    channel.subscribe();
+
+    signalChannelRef.current = channel;
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+      signalChannelRef.current = null;
+    };
+  }, [coupleId, user?.id, isDemoMode]);
+
   const handleSendLoveOrPoke = async (type: 'love' | 'poke') => {
     if (isDemoMode) {
-      alert('Ứng dụng đang ở chế độ Demo! Tính năng thông báo đẩy chỉ hoạt động ở chế độ kết nối cơ sở dữ liệu thật.');
+      triggerInstantNotification('Thông báo', 'Ứng dụng đang ở chế độ Demo! Tính năng thông báo đẩy chỉ hoạt động ở chế độ kết nối cơ sở dữ liệu thật.');
       return;
     }
     if (!partner?.id) {
-      alert('Bạn chưa kết nối với nửa kia! Hãy ghép đôi để sử dụng tính năng này.');
+      triggerInstantNotification('Thông báo', 'Bạn chưa kết nối với nửa kia! Hãy ghép đôi để sử dụng tính năng này.');
       return;
     }
     setIsSendingTestNotification(true);
     try {
+      // 1. Broadcast real-time signal via Supabase (cho giao diện Web/App đang mở)
+      if (signalChannelRef.current) {
+        await signalChannelRef.current.send({
+          type: 'broadcast',
+          event: 'signal',
+          payload: { senderId: user?.id, type }
+        });
+      } else if (coupleId) {
+        const channel = supabase.channel(`couple_signals_${coupleId}`);
+        channel.subscribe(async (status) => {
+          if (status === 'SUBSCRIBED') {
+            await channel.send({
+              type: 'broadcast',
+              event: 'signal',
+              payload: { senderId: user?.id, type }
+            });
+            supabase.removeChannel(channel);
+          }
+        });
+      }
+
+      // 2. Gửi Push Notification (cho điện thoại khi tắt app)
       const tokenService = new UserPushTokenService();
       const partnerToken = await tokenService.fetchPushToken(partner.id);
       
@@ -112,21 +241,19 @@ export const HomeScreen: React.FC = () => {
       if (partnerToken) {
         await sendPushNotification(partnerToken, title, body);
         if (partnerToken.startsWith('mock-')) {
-          alert(
-            `Đã gửi tín hiệu thành công!\n\n(Do đối phương đang dùng Expo Go giả lập nên sự kiện đã được ghi nhận trên hệ thống nhưng không rung chuông vật lý).`
+          triggerInstantNotification(
+            'Tín hiệu gửi đi',
+            'Do đối phương đang dùng Expo Go giả lập nên sự kiện đã được ghi nhận trên hệ thống nhưng không rung chuông vật lý.'
           );
         } else {
-          alert(type === 'love' ? 'Đã gửi yêu thương thành công đến đối phương! 💕' : 'Đã chọc ghẹo đối phương thành công! 🤪');
+          triggerInstantNotification('Thành công', type === 'love' ? 'Đã gửi yêu thương thành công đến đối phương! 💕' : 'Đã chọc ghẹo đối phương thành công! 🤪');
         }
       } else {
-        alert(
-          'Không tìm thấy mã đăng ký thông báo (Push Token) của đối phương!\n\n' +
-          'Lưu ý: Đối phương cần phải đăng nhập vào ứng dụng trên điện thoại ít nhất một lần để đăng ký thiết bị.'
-        );
+        triggerInstantNotification('Thành công', type === 'love' ? 'Đã gửi yêu thương thành công đến đối phương! 💕' : 'Đã chọc ghẹo đối phương thành công! 🤪');
       }
     } catch (err: any) {
       console.error('Lỗi khi gửi tín hiệu:', err);
-      alert('Đã xảy ra lỗi khi gửi: ' + (err?.message || err));
+      triggerInstantNotification('Thất bại', 'Đã xảy ra lỗi khi gửi: ' + (err?.message || err));
     } finally {
       setIsSendingTestNotification(false);
     }

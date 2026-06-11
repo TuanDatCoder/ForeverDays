@@ -2,15 +2,42 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, SafeAreaView, ActivityIndicator, Platform, Alert, LogBox } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
-LogBox.ignoreLogs(['expo-notifications: Android Push notifications']);
-import { RelationshipProvider, useRelationship } from './src/core/RelationshipContext';
+LogBox.ignoreLogs([
+  'expo-notifications: Android Push notifications',
+  'AsyncStorageError',
+  'Auto refresh tick failed with error'
+]);
+import { RelationshipProvider, useRelationship, loadDemoStorageFromAsyncStorage } from './src/core/RelationshipContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { setSupabaseStorage, supabase } from '@forever-days/core';
+
+// Safe Storage Wrapper to prevent crash in Expo Go SDK 53
+const MemoryStorage = new Map<string, string>();
+const SafeStorage = {
+  getItem: async (key: string) => {
+    try { return await AsyncStorage.getItem(key); }
+    catch { return MemoryStorage.get(key) || null; }
+  },
+  setItem: async (key: string, value: string) => {
+    try { await AsyncStorage.setItem(key, value); }
+    catch { MemoryStorage.set(key, value); }
+  },
+  removeItem: async (key: string) => {
+    try { await AsyncStorage.removeItem(key); }
+    catch { MemoryStorage.delete(key); }
+  }
+};
+
+// Configure Supabase to persist auth state on Mobile
+setSupabaseStorage(SafeStorage);
 import { MOBILE_CONFIG } from './src/constants/config';
 import { AuthScreen } from './src/features/AuthScreen';
 import { HomeScreen } from './src/features/HomeScreen';
 import { MilestonesScreen } from './src/features/MilestonesScreen';
 import { RemindersScreen } from './src/features/RemindersScreen';
+import { CosmosScreen } from './src/features/CosmosScreen';
 import { ProfileScreen } from './src/features/ProfileScreen';
-import { Heart, Calendar, Bell, User } from 'lucide-react-native';
+import { Heart, Calendar, Bell, User, Sparkles } from 'lucide-react-native';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { UserPushTokenService } from '@forever-days/core';
@@ -27,8 +54,31 @@ Notifications.setNotificationHandler({
 });
 
 function MainApp() {
-  const { user, isLoading } = useRelationship();
-  const [activeTab, setActiveTab] = useState<'home' | 'milestones' | 'reminders' | 'profile'>('home');
+  const { user, isLoading, coupleId, partner, isDemoMode } = useRelationship();
+  const [activeTab, setActiveTab] = useState<'home' | 'milestones' | 'reminders' | 'cosmos' | 'profile'>('home');
+
+  // Listen to signal channel globally on Mobile
+  useEffect(() => {
+    if (isDemoMode || !coupleId || !user?.id) return;
+
+    const channel = supabase.channel(`couple_signals_${coupleId}`)
+      .on('broadcast', { event: 'signal' }, ({ payload }) => {
+        if (payload.senderId !== user.id) {
+          const senderName = partner?.nickname || 'Nửa kia';
+          const title = payload.type === 'love' ? 'Tín hiệu yêu thương! 💕' : 'Ai đó đang chọc bạn! 🤪';
+          const body = payload.type === 'love'
+            ? `${senderName} đang nhớ bạn rất nhiều! 🥰`
+            : `${senderName} vừa chọc ghẹo bạn một cái! 🤪`;
+
+          Alert.alert(title, body);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [coupleId, user?.id, partner, isDemoMode]);
 
   useEffect(() => {
     async function registerForPushNotificationsAsync() {
@@ -124,6 +174,7 @@ function MainApp() {
       <View style={styles.screenContent}>
         {activeTab === 'home' && <HomeScreen />}
         {activeTab === 'milestones' && <MilestonesScreen />}
+        {activeTab === 'cosmos' && <CosmosScreen />}
         {activeTab === 'reminders' && <RemindersScreen />}
         {activeTab === 'profile' && <ProfileScreen />}
       </View>
@@ -141,7 +192,7 @@ function MainApp() {
             fill={activeTab === 'home' ? AppTheme.colorPrimary : 'none'}
             style={{ marginBottom: 4 }}
           />
-          <Text style={[styles.tabText, activeTab === 'home' && styles.tabTextActive]}>Home</Text>
+          <Text allowFontScaling={false} style={[styles.tabText, activeTab === 'home' && styles.tabTextActive]}>Home</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -155,7 +206,21 @@ function MainApp() {
             fill={activeTab === 'milestones' ? AppTheme.colorPrimary : 'none'}
             style={{ marginBottom: 4 }}
           />
-          <Text style={[styles.tabText, activeTab === 'milestones' && styles.tabTextActive]}>Cột mốc</Text>
+          <Text allowFontScaling={false} style={[styles.tabText, activeTab === 'milestones' && styles.tabTextActive]}>Cột mốc</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => setActiveTab('cosmos')}
+          activeOpacity={0.8}
+          style={[styles.tabItem, activeTab === 'cosmos' && styles.tabItemActive]}
+        >
+          <Sparkles
+            size={20}
+            color={activeTab === 'cosmos' ? AppTheme.colorPrimary : AppTheme.textSecondary}
+            fill={activeTab === 'cosmos' ? AppTheme.colorPrimary : 'none'}
+            style={{ marginBottom: 4 }}
+          />
+          <Text allowFontScaling={false} style={[styles.tabText, activeTab === 'cosmos' && styles.tabTextActive]}>Vũ Trụ</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -169,7 +234,7 @@ function MainApp() {
             fill={activeTab === 'reminders' ? AppTheme.colorPrimary : 'none'}
             style={{ marginBottom: 4 }}
           />
-          <Text style={[styles.tabText, activeTab === 'reminders' && styles.tabTextActive]}>Báo thức</Text>
+          <Text allowFontScaling={false} style={[styles.tabText, activeTab === 'reminders' && styles.tabTextActive]}>Báo thức</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -183,7 +248,7 @@ function MainApp() {
             fill={activeTab === 'profile' ? AppTheme.colorPrimary : 'none'}
             style={{ marginBottom: 4 }}
           />
-          <Text style={[styles.tabText, activeTab === 'profile' && styles.tabTextActive]}>Hồ sơ</Text>
+          <Text allowFontScaling={false} style={[styles.tabText, activeTab === 'profile' && styles.tabTextActive]}>Hồ sơ</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -191,6 +256,20 @@ function MainApp() {
 }
 
 export default function App() {
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    async function init() {
+      await loadDemoStorageFromAsyncStorage();
+      setIsReady(true);
+    }
+    init();
+  }, []);
+
+  if (!isReady) {
+    return null;
+  }
+
   return (
     <RelationshipProvider>
       <MainApp />

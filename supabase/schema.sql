@@ -1108,5 +1108,71 @@ INSERT INTO public.daily_wishes (content, type, special_month, special_day, spec
 
 
 -- ==========================================
+-- BẢNG 17: TRAVEL LOCATIONS (ĐỊA ĐIỂM DU LỊCH)
+-- ==========================================
+CREATE TABLE travel_locations (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(50) DEFAULT 'province', -- 'province' (Tỉnh/Thành phố VN) hoặc 'country' (Quốc gia)
+    country VARCHAR(100) DEFAULT 'Việt Nam', -- Mặc định là Việt Nam
+    image_url TEXT, -- Link ảnh đại diện cho địa điểm
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE travel_locations ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "travel_locations_select" ON public.travel_locations FOR SELECT USING (true);
+
+
+-- ==========================================
+-- BẢNG 18: TRAVEL TRIPS (CHUYẾN ĐI CỦA CẶP ĐÔI)
+-- ==========================================
+CREATE TABLE travel_trips (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    couple_id UUID REFERENCES couples(id) ON DELETE CASCADE,
+    location_id INT REFERENCES travel_locations(id) ON DELETE SET NULL,
+    title VARCHAR(255) NOT NULL, -- Tên chuyến đi (VD: Tuần trăng mật, Chơi lễ 30/4)
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    description TEXT, -- Lời nhắc hoặc kỷ niệm
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE travel_trips ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "travel_trips_select" ON public.travel_trips
+    FOR SELECT USING (
+        couple_id IN (
+            SELECT id FROM public.couples 
+            WHERE user_1_id = auth.uid() OR user_2_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "travel_trips_insert" ON public.travel_trips
+    FOR INSERT WITH CHECK (
+        couple_id IN (
+            SELECT id FROM public.couples 
+            WHERE user_1_id = auth.uid() OR user_2_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "travel_trips_update" ON public.travel_trips
+    FOR UPDATE USING (
+        couple_id IN (
+            SELECT id FROM public.couples 
+            WHERE user_1_id = auth.uid() OR user_2_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "travel_trips_delete" ON public.travel_trips
+    FOR DELETE USING (
+        couple_id IN (
+            SELECT id FROM public.couples 
+            WHERE user_1_id = auth.uid() OR user_2_id = auth.uid()
+        )
+    );
+
+
+-- ==========================================
 -- HOÀN TẤT ✅
 -- ==========================================

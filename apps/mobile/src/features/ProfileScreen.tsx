@@ -10,6 +10,8 @@ import {
   Image
 } from 'react-native';
 import { Camera, User, Heart, Ruler, CupSoda, Utensils } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { useRelationship, demoStorage } from '../core/RelationshipContext';
 import { LoveUtils } from '../core/loveUtils';
 import {
@@ -84,6 +86,41 @@ export const ProfileScreen: React.FC = () => {
   const handleSaveCustomAvatarUrl = async () => {
     await updateProfile(true, nickname.trim(), dob, gender, customAvatarUrl.trim());
     Alert.alert('Thành công', 'Đã cập nhật ảnh đại diện qua link!');
+  };
+
+  const pickImage = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (permissionResult.granted === false) {
+        Alert.alert('Quyền truy cập', 'Bạn cần cấp quyền truy cập thư viện ảnh để chọn ảnh!');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        const manipResult = await ImageManipulator.manipulateAsync(
+          result.assets[0].uri,
+          [{ resize: { width: 200 } }],
+          { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+        );
+
+        if (manipResult.base64) {
+          const base64Uri = `data:image/jpeg;base64,${manipResult.base64}`;
+          await updateProfile(true, nickname.trim(), dob, gender, base64Uri);
+          setCustomAvatarUrl(base64Uri);
+          Alert.alert('Thành công', 'Đã tải lên và cập nhật ảnh đại diện!');
+        }
+      }
+    } catch (error) {
+      console.error('Lỗi chọn ảnh:', error);
+      Alert.alert('Lỗi', 'Không thể chọn hoặc xử lý ảnh!');
+    }
   };
 
   // Clothing Sizes
@@ -571,7 +608,7 @@ export const ProfileScreen: React.FC = () => {
 
               {/* Avatar Section */}
               <View style={{ alignItems: 'center', marginBottom: 20 }}>
-                <View style={{ position: 'relative' }}>
+                <TouchableOpacity onPress={pickImage} activeOpacity={0.8} style={{ position: 'relative' }}>
                   <View style={{
                     width: 96,
                     height: 96,
@@ -615,7 +652,7 @@ export const ProfileScreen: React.FC = () => {
                   }}>
                     <Camera size={14} color={AppTheme.borderColor} />
                   </View>
-                </View>
+                </TouchableOpacity>
                 <Text style={{ fontSize: 10, color: AppTheme.textSecondary, marginTop: 8, fontWeight: '700' }}>Ảnh Đại Diện Của Bạn</Text>
               </View>
 
