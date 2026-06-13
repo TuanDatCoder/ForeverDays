@@ -121,7 +121,7 @@ export const RelationshipProvider: React.FC<{ children: React.ReactNode }> = ({ 
           partnerProfile = await profileService.fetchPartnerProfile(partnerId);
         }
 
-        setState({
+        setState(prev => ({
           user: userProfile,
           partner: partnerProfile,
           anniversaryDate: couple.anniversaryDate || null,
