@@ -26,6 +26,7 @@ interface RelationshipContextType extends RelationshipState {
   connectWithCode: (code: string) => Promise<boolean>;
   register: (email: string, password: string, nickname: string) => Promise<boolean>;
   signIn: (email: string, password: string) => Promise<boolean>;
+  changePassword: (newPassword: string) => Promise<{ success: boolean; message: string }>;
   clearError: () => void;
 }
 
@@ -474,6 +475,22 @@ export const RelationshipProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   };
 
+  const changePassword = async (newPassword: string): Promise<{ success: boolean; message: string }> => {
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      
+      if (error) throw error;
+      
+      setState(prev => ({ ...prev, isLoading: false }));
+      return { success: true, message: 'Đổi mật khẩu thành công!' };
+    } catch (e: any) {
+      const errMsg = translateError(e.message);
+      setState(prev => ({ ...prev, isLoading: false, error: errMsg }));
+      return { success: false, message: errMsg };
+    }
+  };
+
   return (
     <RelationshipContext.Provider
       value={{
@@ -486,6 +503,7 @@ export const RelationshipProvider: React.FC<{ children: React.ReactNode }> = ({ 
         connectWithCode,
         register,
         signIn,
+        changePassword,
         clearError,
       }}
     >

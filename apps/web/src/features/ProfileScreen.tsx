@@ -7,7 +7,7 @@ import {
   PartnerProfileNoteService, UserPushTokenService
 } from '@forever-days/core';
 import type { UserSize, UserBobaPreference, UserHobby, UserFavorite, PartnerProfileNote } from '@forever-days/core';
-import { User, ShieldAlert, HeartCrack, Plus, Trash2, Camera, Check, Heart, Ruler, CupSoda, Utensils, Edit3 } from 'lucide-react';
+import { User, ShieldAlert, HeartCrack, Plus, Trash2, Camera, Check, Heart, Ruler, CupSoda, Utensils, Edit3, KeyRound } from 'lucide-react';
 import { useSEO } from '../hooks/useSEO';
 
 export const ProfileScreen: React.FC = () => {
@@ -19,6 +19,7 @@ export const ProfileScreen: React.FC = () => {
 
   const {
     user, partner, isDemoMode, updateProfile, coupleId,
+    changePassword,
     signOut
   } = useRelationship();
 
@@ -145,6 +146,11 @@ export const ProfileScreen: React.FC = () => {
   const [notePersonality, setNotePersonality] = useState('');
   const [noteIsShared, setNoteIsShared] = useState(false);
   const [isUpdatingNote, setIsUpdatingNote] = useState(false);
+
+  // Change Password
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   // Services
   const sizeService = new UserSizeService();
@@ -323,6 +329,30 @@ export const ProfileScreen: React.FC = () => {
     await updateProfile(true, nickname, dob, gender);
     setIsUpdatingInfo(false);
     showToast('Cập nhật hồ sơ thành công! 🎉');
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      showToast('Lỗi: Mật khẩu xác nhận không khớp! ❌');
+      return;
+    }
+    if (newPassword.length < 6) {
+      showToast('Lỗi: Mật khẩu phải có ít nhất 6 ký tự! ❌');
+      return;
+    }
+    
+    setIsChangingPassword(true);
+    const result = await changePassword(newPassword);
+    setIsChangingPassword(false);
+    
+    if (result.success) {
+      setNewPassword('');
+      setConfirmPassword('');
+      showToast('Đổi mật khẩu thành công! 🔐');
+    } else {
+      showToast(`Lỗi: ${result.message}`);
+    }
   };
 
   // Sizes Actions
@@ -712,6 +742,45 @@ export const ProfileScreen: React.FC = () => {
                 </div>
               </div>
             )}
+
+            {/* Change Password Form */}
+            {!isDemoMode && (
+              <form onSubmit={handleChangePassword} className="bg-bg-card border-[2.2px] border-border-color rounded-2xl p-5 mb-4 shadow-neo transition-all duration-200">
+                <h4 className="text-[15px] font-extrabold mb-4 flex items-center gap-1.5">
+                  <KeyRound size={18} className="text-primary-coral" /> Bảo mật tài khoản
+                </h4>
+                <div className="mb-3">
+                  <label className="block font-extrabold text-xs text-text-secondary mb-1.5 uppercase tracking-wider">Mật khẩu mới</label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    className="bg-bg-primary border-[2.2px] border-border-color rounded-xl px-4 py-3 text-text-primary font-bold text-[15px] w-full outline-none shadow-[inset_2px_2px_5px_rgba(0,0,0,0.3)] focus:border-primary-coral"
+                    placeholder="Nhập mật khẩu mới"
+                    required
+                  />
+                </div>
+                <div className="mb-5">
+                  <label className="block font-extrabold text-xs text-text-secondary mb-1.5 uppercase tracking-wider">Xác nhận mật khẩu mới</label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    className="bg-bg-primary border-[2.2px] border-border-color rounded-xl px-4 py-3 text-text-primary font-bold text-[15px] w-full outline-none shadow-[inset_2px_2px_5px_rgba(0,0,0,0.3)] focus:border-primary-coral"
+                    placeholder="Nhập lại mật khẩu mới"
+                    required
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={isChangingPassword}
+                  className="w-full bg-text-primary text-bg-card font-extrabold text-[15px] border-[2.2px] border-border-color rounded-xl px-5 py-2.5 cursor-pointer shadow-neo inline-flex items-center justify-center gap-2 transition-all duration-100 hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-neo-hover active:translate-x-[3px] active:translate-y-[3px] active:shadow-none select-none"
+                >
+                  {isChangingPassword ? 'Đang cập nhật...' : 'Đổi mật khẩu'}
+                </button>
+              </form>
+            )}
+
           </div>
         )}
 

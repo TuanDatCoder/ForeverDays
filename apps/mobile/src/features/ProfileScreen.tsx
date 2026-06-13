@@ -9,7 +9,7 @@ import {
   Alert,
   Image
 } from 'react-native';
-import { Camera, User, Heart, Ruler, CupSoda, Utensils } from 'lucide-react-native';
+import { Camera, User, Heart, Ruler, CupSoda, Utensils, KeyRound } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useRelationship, demoStorage } from '../core/RelationshipContext';
@@ -32,6 +32,7 @@ export const ProfileScreen: React.FC = () => {
     isDemoMode,
     updateProfile,
     coupleId,
+    changePassword,
     signOut
   } = useRelationship();
 
@@ -55,6 +56,11 @@ export const ProfileScreen: React.FC = () => {
   const [gender, setGender] = useState('Chưa chọn');
   const [isUpdatingInfo, setIsUpdatingInfo] = useState(false);
   const [customAvatarUrl, setCustomAvatarUrl] = useState('');
+
+  // Change Password
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   const AVATAR_PRESETS = [
     { name: 'Oliver 🐼', url: 'https://api.dicebear.com/7.x/adventurer/png?seed=Oliver' },
@@ -368,6 +374,29 @@ export const ProfileScreen: React.FC = () => {
     await updateProfile(true, nickname.trim(), dob, gender);
     setIsUpdatingInfo(false);
     Alert.alert('Thành công', 'Đã cập nhật thông tin cá nhân!');
+  };
+
+  const handleChangePassword = async () => {
+    if (newPassword !== confirmPassword) {
+      Alert.alert('Lỗi', 'Mật khẩu xác nhận không khớp!');
+      return;
+    }
+    if (newPassword.length < 6) {
+      Alert.alert('Lỗi', 'Mật khẩu phải có ít nhất 6 ký tự!');
+      return;
+    }
+    
+    setIsChangingPassword(true);
+    const result = await changePassword(newPassword);
+    setIsChangingPassword(false);
+    
+    if (result.success) {
+      setNewPassword('');
+      setConfirmPassword('');
+      Alert.alert('Thành công', 'Đã đổi mật khẩu!');
+    } else {
+      Alert.alert('Lỗi', result.message);
+    }
   };
 
   // Sizes Actions
@@ -830,6 +859,50 @@ export const ProfileScreen: React.FC = () => {
                     );
                   })()
                 ) : null}
+              </View>
+            )}
+
+            {/* Change Password Form */}
+            {!isDemoMode && (
+              <View style={styles.card}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 16 }}>
+                  <KeyRound size={18} color={AppTheme.textPrimary} />
+                  <Text style={[styles.cardTitle, { marginBottom: 0 }]}>Bảo mật tài khoản</Text>
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>Mật khẩu mới</Text>
+                  <TextInput
+                    value={newPassword}
+                    onChangeText={setNewPassword}
+                    placeholder="Nhập mật khẩu mới"
+                    placeholderTextColor="#666"
+                    secureTextEntry
+                    style={styles.input}
+                  />
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>Xác nhận mật khẩu mới</Text>
+                  <TextInput
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    placeholder="Nhập lại mật khẩu mới"
+                    placeholderTextColor="#666"
+                    secureTextEntry
+                    style={styles.input}
+                  />
+                </View>
+
+                <TouchableOpacity
+                  onPress={handleChangePassword}
+                  disabled={isChangingPassword}
+                  style={[styles.saveBtn, { backgroundColor: AppTheme.textPrimary, borderColor: AppTheme.textPrimary }]}
+                >
+                  <Text style={[styles.saveBtnText, { color: AppTheme.bgCard }]}>
+                    {isChangingPassword ? 'Đang cập nhật...' : 'Đổi mật khẩu'}
+                  </Text>
+                </TouchableOpacity>
               </View>
             )}
           </View>
