@@ -13,15 +13,19 @@ type TabType = 'home' | 'milestones' | 'reminders' | 'cosmos' | 'profile';
 
 const getTabFromPath = (path: string): TabType => {
   const cleanPath = path.replace(/^\//, '').toLowerCase();
-  if (cleanPath === 'milestones') return 'milestones';
-  if (cleanPath === 'reminders') return 'reminders';
-  if (cleanPath === 'cosmos') return 'cosmos';
-  if (cleanPath === 'profile') return 'profile';
+  if (cleanPath === 'cot-moc' || cleanPath === 'milestones') return 'milestones';
+  if (cleanPath === 'nhac-nho' || cleanPath === 'reminders') return 'reminders';
+  if (cleanPath === 'vu-tru' || cleanPath === 'cosmos') return 'cosmos';
+  if (cleanPath === 'ho-so' || cleanPath === 'profile') return 'profile';
   return 'home';
 };
 
 const getPathFromTab = (tab: TabType): string => {
   if (tab === 'home') return '/';
+  if (tab === 'milestones') return '/cot-moc';
+  if (tab === 'reminders') return '/nhac-nho';
+  if (tab === 'cosmos') return '/vu-tru';
+  if (tab === 'profile') return '/ho-so';
   return `/${tab}`;
 };
 
@@ -41,7 +45,7 @@ const AppContent: React.FC = () => {
     localStorage.setItem('fd_active_tab', tab);
     const targetPath = getPathFromTab(tab);
     if (window.location.pathname !== targetPath) {
-      window.history.pushState(null, '', targetPath);
+      window.history.pushState(null, '', targetPath + window.location.search);
     }
   };
 
@@ -51,7 +55,7 @@ const AppContent: React.FC = () => {
     if (currentPath === '/') {
       const saved = localStorage.getItem('fd_active_tab') as TabType | null;
       if (saved && saved !== 'home' && ['home', 'milestones', 'reminders', 'cosmos', 'profile'].includes(saved)) {
-        window.history.replaceState(null, '', `/${saved}`);
+        window.history.replaceState(null, '', `${getPathFromTab(saved)}${window.location.search}`);
       }
     }
 

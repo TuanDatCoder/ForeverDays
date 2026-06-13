@@ -363,9 +363,9 @@ export const MilestonesScreen: React.FC = () => {
     try {
       if (isDemoMode) {
         const mockLocations: TravelLocation[] = [
-          { id: 1, name: 'Đà Lạt', type: 'province', country: 'Việt Nam', image_url: 'https://images.unsplash.com/photo-1517427677505-610b42f1a601?auto=format&fit=crop&q=80&w=800' },
+          { id: 1, name: 'Đà Lạt', type: 'province', country: 'Việt Nam', image_url: 'https://res.cloudinary.com/didnsp4p0/image/upload/v1781170634/DaLat_nl1wds.jpg' },
           { id: 2, name: 'Hà Nội', type: 'province', country: 'Việt Nam', image_url: 'https://images.unsplash.com/photo-1555921015-5532091f6026?auto=format&fit=crop&q=80&w=800' },
-          { id: 3, name: 'Thái Lan', type: 'country', country: 'Thái Lan', image_url: 'https://images.unsplash.com/photo-1552465011-b4e21bf6e79a?auto=format&fit=crop&q=80&w=800' },
+          { id: 3, name: 'Thái Lan', type: 'country', country: 'Thái Lan', image_url: 'https://res.cloudinary.com/didnsp4p0/image/upload/v1781170634/DaLat_nl1wds.jpg' },
         ];
         setLocations(mockLocations);
         

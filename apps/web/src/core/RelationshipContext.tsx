@@ -90,6 +90,10 @@ export const RelationshipProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const loadState = async (userId: string) => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     try {
+      const isDemoUrl = window.location.search.includes('mode=demo');
+      if (isDemoUrl) {
+        localStorage.setItem('is_demo_mode', 'true');
+      }
       const isDemo = localStorage.getItem('is_demo_mode') === 'true';
       if (isDemo) {
         loadDemoState();
@@ -171,11 +175,21 @@ export const RelationshipProvider: React.FC<{ children: React.ReactNode }> = ({ 
   // Listen to Auth state changes
   useEffect(() => {
     const checkUser = async () => {
+      const isDemoUrl = window.location.search.includes('mode=demo');
+      if (isDemoUrl) {
+        localStorage.setItem('is_demo_mode', 'true');
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
       const isDemo = localStorage.getItem('is_demo_mode') === 'true';
 
       if (isDemo) {
         loadDemoState();
+        if (!isDemoUrl) {
+          const newUrl = new URL(window.location.href);
+          newUrl.searchParams.set('mode', 'demo');
+          window.history.replaceState(null, '', newUrl.toString());
+        }
       } else if (session?.user) {
         await loadState(session.user.id);
       } else {
@@ -238,10 +252,17 @@ export const RelationshipProvider: React.FC<{ children: React.ReactNode }> = ({ 
       pairingCode: 'LOVE999',
       coupleId: 'demo-couple-id',
     });
+
+    const newUrl = new URL(window.location.href);
+    newUrl.searchParams.set('mode', 'demo');
+    window.history.replaceState(null, '', newUrl.toString());
   };
 
   const signOut = async () => {
     localStorage.clear();
+    const newUrl = new URL(window.location.href);
+    newUrl.searchParams.delete('mode');
+    window.history.replaceState(null, '', newUrl.pathname);
     try {
       await supabase.auth.signOut();
     } catch {}
