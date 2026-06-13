@@ -7,17 +7,19 @@ import { MilestonesScreen } from './features/MilestonesScreen';
 import { RemindersScreen } from './features/RemindersScreen';
 import { CosmosScreen } from './features/CosmosScreen';
 import { ProfileScreen } from './features/ProfileScreen';
+import { NotFoundScreen } from './features/NotFoundScreen';
 import { Heart, Calendar, Bell, User, Sparkles } from 'lucide-react';
 
-type TabType = 'home' | 'milestones' | 'reminders' | 'cosmos' | 'profile';
+type TabType = 'home' | 'milestones' | 'reminders' | 'cosmos' | 'profile' | 'not-found';
 
 const getTabFromPath = (path: string): TabType => {
   const cleanPath = path.replace(/^\//, '').toLowerCase();
+  if (cleanPath === '' || cleanPath === 'home' || cleanPath.startsWith('?')) return 'home';
   if (cleanPath === 'cot-moc' || cleanPath === 'milestones') return 'milestones';
   if (cleanPath === 'nhac-nho' || cleanPath === 'reminders') return 'reminders';
   if (cleanPath === 'vu-tru' || cleanPath === 'cosmos') return 'cosmos';
   if (cleanPath === 'ho-so' || cleanPath === 'profile') return 'profile';
-  return 'home';
+  return 'not-found';
 };
 
 const getPathFromTab = (tab: TabType): string => {
@@ -172,6 +174,8 @@ const AppContent: React.FC = () => {
         return <CosmosScreen />;
       case 'profile':
         return <ProfileScreen />;
+      case 'not-found':
+        return <NotFoundScreen />;
       case 'home':
       default:
         return <HomeScreen />;
