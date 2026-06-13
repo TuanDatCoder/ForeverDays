@@ -50,4 +50,4 @@ npm run web:build
 cd apps/mobile
 eas build --platform android --profile preview
 ```
-Dinh Quoc Tuan Dát
+Dinh Quoc Tuan Dat
