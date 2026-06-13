@@ -5,8 +5,15 @@ import { LogOut, Edit3, Calendar, Copy, Check, Smile, RotateCw, Heart, Clock, Ca
 import { UserStatusService, MilestoneService, UserMoodLogService, CoupleCountdownCustomizationService, UserPushTokenService, MilestonePlanService, DailyWishService, MOCK_DAILY_WISHES, supabase } from '@forever-days/core';
 import type { UserMoodLog, CoupleCountdownCustomization, MilestonePlan, DailyWish } from '@forever-days/core';
 import confetti from 'canvas-confetti';
+import { useSEO } from '../hooks/useSEO';
 
 export const HomeScreen: React.FC = () => {
+  useSEO({
+    title: 'Trang Chủ | ForeverDays',
+    description: 'Trang chủ ForeverDays - Ứng dụng đếm ngày yêu và lưu giữ kỷ niệm đặc biệt cho các cặp đôi.',
+    keywords: 'trang chủ foreverdays, đếm ngày yêu, kỷ niệm tình yêu'
+  });
+
   const {
     user, partner, anniversaryDate, isPaired, isDemoMode,
     pairingCode, updateAnniversary, generatePairCode, connectWithCode,

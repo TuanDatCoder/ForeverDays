@@ -15,11 +15,18 @@ import {
   Info,
   HelpCircle
 } from 'lucide-react';
+import { useSEO } from '../hooks/useSEO';
 import { useRelationship } from '../core/RelationshipContext';
 
 const zodiacService = new ZodiacService();
 
 export const CosmosScreen: React.FC = () => {
+  useSEO({
+    title: 'Góc Vũ Trụ Tình Yêu | ForeverDays',
+    description: 'Nơi lưu giữ những bí mật, kỷ niệm và sự tương hợp cung hoàng đạo của hai bạn.',
+    keywords: 'góc vũ trụ, cung hoàng đạo cặp đôi, bí mật tình yêu'
+  });
+
   const { user, partner } = useRelationship();
   const [activeTab, setActiveTab] = useState<'compatibility' | 'meanings'>('compatibility');
   const [signs, setSigns] = useState<ZodiacSign[]>([]);

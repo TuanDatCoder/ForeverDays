@@ -3,6 +3,7 @@ import { useRelationship } from '../core/RelationshipContext';
 import { ReminderService, UserPushTokenService, MOCK_DAILY_WISHES } from '@forever-days/core';
 import type { Reminder, DailyWish } from '@forever-days/core';
 import { Bell, Clock, Trash2, Send, Plus, ToggleLeft, ToggleRight } from 'lucide-react';
+import { useSEO } from '../hooks/useSEO';
 
 // Hàm tính wish hôm nay
 const computeTodayWish = (wishes: DailyWish[]): DailyWish | null => {
@@ -23,6 +24,12 @@ const computeTodayWish = (wishes: DailyWish[]): DailyWish | null => {
 };
 
 export const RemindersScreen: React.FC = () => {
+  useSEO({
+    title: 'Nhắc Nhở & Lời Chúc | ForeverDays',
+    description: 'Không bao giờ quên những ngày quan trọng với hệ thống nhắc nhở và lời chúc mỗi ngày.',
+    keywords: 'nhắc nhở tình yêu, lời chúc mỗi ngày, đếm ngày kỷ niệm'
+  });
+
   const { coupleId, isDemoMode, user, partner } = useRelationship();
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [isOpenAddModal, setIsOpenAddModal] = useState(false);

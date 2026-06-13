@@ -1,7 +1,14 @@
 import React from 'react';
 import { HeartCrack, Home } from 'lucide-react';
+import { useSEO } from '../hooks/useSEO';
 
 export const NotFoundScreen: React.FC = () => {
+  useSEO({
+    title: '404 - Không Tìm Thấy Trang | ForeverDays',
+    description: 'Trang bạn tìm kiếm không tồn tại hoặc đã bị dời đi. Quay lại trang chủ ForeverDays.',
+    keywords: '404, không tìm thấy trang, foreverdays error'
+  });
+
   const handleGoHome = () => {
     window.location.href = '/';
   };

@@ -1,8 +1,15 @@
 import React, { useState } from 'react';
 import { useRelationship } from '../core/RelationshipContext';
 import { Eye, EyeOff } from 'lucide-react';
+import { useSEO } from '../hooks/useSEO';
 
 export const AuthScreen: React.FC = () => {
+  useSEO({
+    title: 'ForeverDays - Đăng nhập & Đăng ký',
+    description: 'Bắt đầu hành trình ghi dấu tình yêu của bạn với ForeverDays. Kết nối cặp đôi, đếm ngày yêu nhau và tạo góc vũ trụ riêng.',
+    keywords: 'đăng nhập foreverdays, tạo tài khoản tình yêu, đếm ngày yêu, app cặp đôi'
+  });
+
   const { register, signIn, startDemoMode, error, isLoading, clearError } = useRelationship();
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState('');

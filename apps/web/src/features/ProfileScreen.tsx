@@ -8,8 +8,15 @@ import {
 } from '@forever-days/core';
 import type { UserSize, UserBobaPreference, UserHobby, UserFavorite, PartnerProfileNote } from '@forever-days/core';
 import { User, ShieldAlert, HeartCrack, Plus, Trash2, Camera, Check, Heart, Ruler, CupSoda, Utensils, Edit3 } from 'lucide-react';
+import { useSEO } from '../hooks/useSEO';
 
 export const ProfileScreen: React.FC = () => {
+  useSEO({
+    title: 'Hồ Sơ Cặp Đôi | ForeverDays',
+    description: 'Cập nhật thông tin sở thích, kích cỡ, và những điều nhỏ bé về nửa kia.',
+    keywords: 'hồ sơ tình yêu, sở thích người yêu, foreverdays profile'
+  });
+
   const {
     user, partner, isDemoMode, updateProfile, coupleId,
     signOut

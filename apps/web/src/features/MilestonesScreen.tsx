@@ -5,6 +5,7 @@ import type { MilestoneItem } from '../core/loveUtils';
 import { MilestoneService, CoupleEventService, MilestonePlanService, TravelService } from '@forever-days/core';
 import type { CoupleEvent, MilestonePlan, TravelLocation, TravelTrip } from '@forever-days/core';
 import { Calendar, Plus, CheckCircle, Trash2, Pencil, Heart, Clock, MapPin, Compass, ChevronDown, ChevronUp, Utensils, Gamepad2, Plane, Globe } from 'lucide-react';
+import { useSEO } from '../hooks/useSEO';
 
 const CustomDropdown = ({ value, options, onChange, icon: Icon, label, fullWidth }: any) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -63,6 +64,12 @@ const CustomDropdown = ({ value, options, onChange, icon: Icon, label, fullWidth
 };
 
 export const MilestonesScreen: React.FC = () => {
+  useSEO({
+    title: 'Cột Mốc Tình Yêu | ForeverDays',
+    description: 'Quản lý và ghi lại những cột mốc, chuyến đi và kế hoạch tương lai của hai bạn.',
+    keywords: 'cột mốc tình yêu, kỷ niệm cặp đôi, kế hoạch tương lai'
+  });
+
   const { anniversaryDate, coupleId, isDemoMode } = useRelationship();
   const [customMilestones, setCustomMilestones] = useState<MilestoneItem[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
