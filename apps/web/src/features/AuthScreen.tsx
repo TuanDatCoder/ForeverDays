@@ -10,8 +10,9 @@ export const AuthScreen: React.FC = () => {
     keywords: 'đăng nhập foreverdays, tạo tài khoản tình yêu, đếm ngày yêu, app cặp đôi'
   });
 
-  const { register, signIn, startDemoMode, error, isLoading, clearError } = useRelationship();
+  const { register, signIn, resetPassword, startDemoMode, error, isLoading, clearError } = useRelationship();
   const [isRegister, setIsRegister] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
@@ -20,12 +21,15 @@ export const AuthScreen: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearError();
-    if (!email || !password) return;
+    if (!email) return;
 
-    if (isRegister) {
-      if (!nickname) return;
+    if (isForgotPassword) {
+      await resetPassword(email);
+    } else if (isRegister) {
+      if (!password || !nickname) return;
       await register(email, password, nickname);
     } else {
+      if (!password) return;
       await signIn(email, password);
     }
   };
@@ -52,7 +56,7 @@ export const AuthScreen: React.FC = () => {
         )}
 
         <form onSubmit={handleSubmit} className="relative z-10">
-          {isRegister && (
+          {!isForgotPassword && isRegister && (
             <div className="mb-4">
               <label className="block font-extrabold text-xs text-text-secondary mb-1.5 uppercase tracking-wider">Biệt danh của bạn</label>
               <input
@@ -61,7 +65,7 @@ export const AuthScreen: React.FC = () => {
                 value={nickname}
                 onChange={e => setNickname(e.target.value)}
                 className="bg-bg-primary border-[2.2px] border-border-color rounded-xl px-4 py-3 text-text-primary font-bold text-[15px] w-full outline-none shadow-[inset_2px_2px_5px_rgba(0,0,0,0.3)] focus:border-primary-coral"
-                required
+                required={!isForgotPassword && isRegister}
               />
             </div>
           )}
@@ -79,47 +83,65 @@ export const AuthScreen: React.FC = () => {
             />
           </div>
 
-          <div className="mb-6">
-            <label className="block font-extrabold text-xs text-text-secondary mb-1.5 uppercase tracking-wider">Mật khẩu</label>
-            <div className="relative">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                placeholder="••••••••"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                autoComplete={isRegister ? 'new-password' : 'current-password'}
-                className="bg-bg-primary border-[2.2px] border-border-color rounded-xl px-4 py-3 pr-12 text-text-primary font-bold text-[15px] w-full outline-none shadow-[inset_2px_2px_5px_rgba(0,0,0,0.3)] focus:border-primary-coral"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(v => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-primary-coral transition-colors p-1"
-                tabIndex={-1}
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
+          {!isForgotPassword && (
+            <div className="mb-6">
+              <label className="block font-extrabold text-xs text-text-secondary mb-1.5 uppercase tracking-wider">Mật khẩu</label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  autoComplete={isRegister ? 'new-password' : 'current-password'}
+                  className="bg-bg-primary border-[2.2px] border-border-color rounded-xl px-4 py-3 pr-12 text-text-primary font-bold text-[15px] w-full outline-none shadow-[inset_2px_2px_5px_rgba(0,0,0,0.3)] focus:border-primary-coral"
+                  required={!isForgotPassword}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-primary-coral transition-colors p-1"
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           <button
             type="submit"
             disabled={isLoading}
             className="w-full bg-primary-coral text-border-color font-extrabold text-base border-[2.2px] border-border-color rounded-xl px-5 py-3.5 cursor-pointer shadow-neo inline-flex items-center justify-center gap-2 transition-all duration-100 hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-neo-hover active:translate-x-[3px] active:translate-y-[3px] active:shadow-none select-none mb-4"
           >
-            {isLoading ? 'Đang xử lý...' : isRegister ? 'Đăng Ký Tài Khoản' : 'Đăng Nhập'}
+            {isLoading ? 'Đang xử lý...' : isForgotPassword ? 'Gửi Link Khôi Phục' : isRegister ? 'Đăng Ký Tài Khoản' : 'Đăng Nhập'}
           </button>
         </form>
 
-        <div className="text-center mt-2 relative z-10">
+        <div className="text-center mt-2 relative z-10 flex flex-col gap-2">
+          {!isForgotPassword && !isRegister && (
+            <span
+              onClick={() => {
+                clearError();
+                setIsForgotPassword(true);
+              }}
+              className="text-text-secondary hover:text-primary-coral font-bold text-[13px] cursor-pointer"
+            >
+              Quên mật khẩu?
+            </span>
+          )}
+          
           <span
             onClick={() => {
               clearError();
-              setIsRegister(!isRegister);
+              if (isForgotPassword) {
+                setIsForgotPassword(false);
+              } else {
+                setIsRegister(!isRegister);
+              }
             }}
             className="text-primary-coral font-extrabold text-sm cursor-pointer underline"
           >
-            {isRegister ? 'Đã có tài khoản? Đăng nhập ngay' : 'Chưa có tài khoản? Đăng ký ngay'}
+            {isForgotPassword ? 'Quay lại đăng nhập' : isRegister ? 'Đã có tài khoản? Đăng nhập ngay' : 'Chưa có tài khoản? Đăng ký ngay'}
           </span>
         </div>
 

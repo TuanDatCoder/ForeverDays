@@ -8,6 +8,7 @@ import { RemindersScreen } from './features/RemindersScreen';
 import { CosmosScreen } from './features/CosmosScreen';
 import { ProfileScreen } from './features/ProfileScreen';
 import { NotFoundScreen } from './features/NotFoundScreen';
+import { UpdatePasswordScreen } from './features/UpdatePasswordScreen';
 import { Heart, Calendar, Bell, User, Sparkles } from 'lucide-react';
 
 type TabType = 'home' | 'milestones' | 'reminders' | 'cosmos' | 'profile' | 'not-found';
@@ -32,7 +33,7 @@ const getPathFromTab = (tab: TabType): string => {
 };
 
 const AppContent: React.FC = () => {
-  const { user, isDemoMode, isLoading, coupleId, partner } = useRelationship();
+  const { user, isDemoMode, isLoading, coupleId, partner, isRecoveringPassword } = useRelationship();
   const [activeTab, setActiveTab] = useState<TabType>(() => {
     const currentPath = window.location.pathname;
     if (currentPath === '/') {
@@ -156,6 +157,11 @@ const AppContent: React.FC = () => {
         </div>
       </div>
     );
+  }
+
+  // If recovering password, show UpdatePasswordScreen
+  if (isRecoveringPassword) {
+    return <UpdatePasswordScreen />;
   }
 
   // If not logged in and not in demo mode, show Auth Screen

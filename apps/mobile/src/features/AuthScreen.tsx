@@ -7,8 +7,9 @@ import { useRelationship } from '../core/RelationshipContext';
 import { Eye, EyeOff } from 'lucide-react-native';
 
 export const AuthScreen: React.FC = () => {
-  const { register, signIn, startDemoMode, error, isLoading, clearError } = useRelationship();
+  const { register, signIn, resetPassword, startDemoMode, error, isLoading, clearError } = useRelationship();
   const [isRegister, setIsRegister] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
@@ -16,12 +17,15 @@ export const AuthScreen: React.FC = () => {
 
   const handleSubmit = () => {
     clearError();
-    if (!email || !password) return;
+    if (!email) return;
 
-    if (isRegister) {
-      if (!nickname) return;
+    if (isForgotPassword) {
+      resetPassword(email);
+    } else if (isRegister) {
+      if (!password || !nickname) return;
       register(email, password, nickname);
     } else {
+      if (!password) return;
       signIn(email, password);
     }
   };
@@ -44,7 +48,7 @@ export const AuthScreen: React.FC = () => {
             </View>
           )}
 
-          {isRegister && (
+          {!isForgotPassword && isRegister && (
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Biệt danh của bạn</Text>
               <TextInput
@@ -71,26 +75,28 @@ export const AuthScreen: React.FC = () => {
             />
           </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Mật khẩu</Text>
-            <View style={styles.passwordWrapper}>
-              <TextInput
-                value={password}
-                onChangeText={setPassword}
-                placeholder="••••••••"
-                placeholderTextColor="#666"
-                secureTextEntry={!showPassword}
-                style={[styles.input, styles.passwordInput]}
-              />
-              <TouchableOpacity
-                onPress={() => setShowPassword(v => !v)}
-                style={styles.eyeButton}
-                activeOpacity={0.6}
-              >
-                {showPassword ? <EyeOff size={18} color={AppTheme.textSecondary} /> : <Eye size={18} color={AppTheme.textSecondary} />}
-              </TouchableOpacity>
+          {!isForgotPassword && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Mật khẩu</Text>
+              <View style={styles.passwordWrapper}>
+                <TextInput
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="••••••••"
+                  placeholderTextColor="#666"
+                  secureTextEntry={!showPassword}
+                  style={[styles.input, styles.passwordInput]}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(v => !v)}
+                  style={styles.eyeButton}
+                  activeOpacity={0.6}
+                >
+                  {showPassword ? <EyeOff size={18} color={AppTheme.textSecondary} /> : <Eye size={18} color={AppTheme.textSecondary} />}
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          )}
 
           <TouchableOpacity
             onPress={handleSubmit}
@@ -99,20 +105,39 @@ export const AuthScreen: React.FC = () => {
             style={styles.button}
           >
             <Text style={styles.buttonText}>
-              {isLoading ? 'Đang xử lý...' : isRegister ? 'Đăng Ký Tài Khoản' : 'Đăng Nhập'}
+              {isLoading ? 'Đang xử lý...' : isForgotPassword ? 'Gửi Link Khôi Phục' : isRegister ? 'Đăng Ký Tài Khoản' : 'Đăng Nhập'}
             </Text>
           </TouchableOpacity>
+
+          {!isForgotPassword && !isRegister && (
+            <TouchableOpacity
+              onPress={() => {
+                clearError();
+                setIsForgotPassword(true);
+              }}
+              activeOpacity={0.6}
+              style={[styles.switchButton, { marginBottom: 12 }]}
+            >
+              <Text style={[styles.switchText, { color: AppTheme.textSecondary }]}>
+                Quên mật khẩu?
+              </Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             onPress={() => {
               clearError();
-              setIsRegister(!isRegister);
+              if (isForgotPassword) {
+                setIsForgotPassword(false);
+              } else {
+                setIsRegister(!isRegister);
+              }
             }}
             activeOpacity={0.6}
             style={styles.switchButton}
           >
             <Text style={styles.switchText}>
-              {isRegister ? 'Đã có tài khoản? Đăng nhập ngay' : 'Chưa có tài khoản? Đăng ký ngay'}
+              {isForgotPassword ? 'Quay lại đăng nhập' : isRegister ? 'Đã có tài khoản? Đăng nhập ngay' : 'Chưa có tài khoản? Đăng ký ngay'}
             </Text>
           </TouchableOpacity>
 

@@ -27,6 +27,7 @@ interface RelationshipContextType extends RelationshipState {
   connectWithCode: (code: string) => Promise<boolean>;
   register: (email: string, password: string, nickname: string) => Promise<boolean>;
   signIn: (email: string, password: string) => Promise<boolean>;
+  resetPassword: (email: string) => Promise<{ success: boolean; message: string }>;
   changePassword: (newPassword: string) => Promise<{ success: boolean; message: string }>;
   clearError: () => void;
 }
@@ -97,6 +98,26 @@ export const RelationshipProvider: React.FC<{ children: React.ReactNode }> = ({ 
   });
 
   const clearError = () => setState(prev => ({ ...prev, error: null }));
+
+  const translateError = (msg: string): string => {
+    if (!msg) return 'Đã xảy ra lỗi. Vui lòng thử lại.';
+    const m = msg.toLowerCase();
+    if (m.includes('invalid login credentials') || m.includes('invalid email or password'))
+      return 'Email hoặc mật khẩu không đúng. Vui lòng kiểm tra lại!';
+    if (m.includes('email not confirmed'))
+      return 'Email chưa được xác nhận. Vui lòng kiểm tra hộp thư và xác nhận tài khoản!';
+    if (m.includes('user already registered') || m.includes('already been registered'))
+      return 'Email này đã được đăng ký. Vui lòng đăng nhập hoặc dùng email khác!';
+    if (m.includes('password should be at least'))
+      return 'Mật khẩu phải có ít nhất 6 ký tự!';
+    if (m.includes('unable to validate email address'))
+      return 'Địa chỉ email không hợp lệ!';
+    if (m.includes('network') || m.includes('fetch'))
+      return 'Lỗi kết nối mạng. Vui lòng kiểm tra internet!';
+    if (m.includes('too many requests'))
+      return 'Bạn đã thử quá nhiều lần. Vui lòng đợi một chút rồi thử lại!';
+    return msg;
+  };
 
   const loadState = async (userId: string) => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
@@ -444,6 +465,23 @@ export const RelationshipProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   };
 
+  const resetPassword = async (email: string): Promise<{ success: boolean; message: string }> => {
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+    try {
+      const redirectTo = 'https://foreverdays.co/update-password';
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo,
+      });
+      if (error) throw error;
+      setState(prev => ({ ...prev, isLoading: false }));
+      return { success: true, message: 'Đã gửi link khôi phục. Vui lòng kiểm tra email của bạn!' };
+    } catch (e: any) {
+      const errMsg = translateError(e.message);
+      setState(prev => ({ ...prev, isLoading: false, error: errMsg }));
+      return { success: false, message: errMsg };
+    }
+  };
+
   const changePassword = async (newPassword: string): Promise<{ success: boolean; message: string }> => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     try {
@@ -496,6 +534,7 @@ export const RelationshipProvider: React.FC<{ children: React.ReactNode }> = ({ 
         connectWithCode,
         register,
         signIn,
+        resetPassword,
         changePassword,
         clearError,
       }}

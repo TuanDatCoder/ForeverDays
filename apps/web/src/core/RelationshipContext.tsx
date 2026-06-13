@@ -15,6 +15,7 @@ interface RelationshipState {
   isDemoMode: boolean;
   pairingCode: string | null;
   coupleId: string | null;
+  isRecoveringPassword: boolean;
 }
 
 interface RelationshipContextType extends RelationshipState {
@@ -26,6 +27,8 @@ interface RelationshipContextType extends RelationshipState {
   connectWithCode: (code: string) => Promise<boolean>;
   register: (email: string, password: string, nickname: string) => Promise<boolean>;
   signIn: (email: string, password: string) => Promise<boolean>;
+  resetPassword: (email: string) => Promise<{ success: boolean; message: string }>;
+  finishRecovery: () => void;
   changePassword: (newPassword: string) => Promise<{ success: boolean; message: string }>;
   clearError: () => void;
 }
@@ -63,6 +66,7 @@ export const RelationshipProvider: React.FC<{ children: React.ReactNode }> = ({ 
     isDemoMode: false,
     pairingCode: null,
     coupleId: null,
+    isRecoveringPassword: false,
   });
 
   const clearError = () => setState(prev => ({ ...prev, error: null }));
@@ -127,10 +131,12 @@ export const RelationshipProvider: React.FC<{ children: React.ReactNode }> = ({ 
           isDemoMode: false,
           pairingCode: null,
           coupleId: couple.id,
-        });
+          isRecoveringPassword: prev.isRecoveringPassword,
+        }));
       } else {
         // Unpaired user
-        setState({
+        setState(prev => ({
+          ...prev,
           user: userProfile,
           partner: null,
           anniversaryDate: null,
@@ -140,7 +146,8 @@ export const RelationshipProvider: React.FC<{ children: React.ReactNode }> = ({ 
           isDemoMode: false,
           pairingCode: null,
           coupleId: null,
-        });
+          isRecoveringPassword: prev.isRecoveringPassword,
+        }));
       }
     } catch (e: any) {
       setState(prev => ({ ...prev, isLoading: false, error: e.message || 'Lỗi tải dữ liệu.' }));
@@ -170,6 +177,7 @@ export const RelationshipProvider: React.FC<{ children: React.ReactNode }> = ({ 
       isDemoMode: true,
       pairingCode: 'LOVE999',
       coupleId: 'demo-couple-id',
+      isRecoveringPassword: false,
     });
   };
 
@@ -204,7 +212,9 @@ export const RelationshipProvider: React.FC<{ children: React.ReactNode }> = ({ 
       const isDemo = localStorage.getItem('is_demo_mode') === 'true';
       if (isDemo) return;
 
-      if (event === 'SIGNED_IN' && session?.user) {
+      if (event === 'PASSWORD_RECOVERY') {
+        setState(prev => ({ ...prev, isRecoveringPassword: true, isLoading: false }));
+      } else if (event === 'SIGNED_IN' && session?.user) {
         await loadState(session.user.id);
       } else if (event === 'SIGNED_OUT') {
         setState({
@@ -217,6 +227,7 @@ export const RelationshipProvider: React.FC<{ children: React.ReactNode }> = ({ 
           isDemoMode: false,
           pairingCode: null,
           coupleId: null,
+          isRecoveringPassword: false,
         });
       }
     });
@@ -252,6 +263,7 @@ export const RelationshipProvider: React.FC<{ children: React.ReactNode }> = ({ 
       isDemoMode: true,
       pairingCode: 'LOVE999',
       coupleId: 'demo-couple-id',
+      isRecoveringPassword: false,
     });
 
     const newUrl = new URL(window.location.href);
@@ -277,6 +289,7 @@ export const RelationshipProvider: React.FC<{ children: React.ReactNode }> = ({ 
       isDemoMode: false,
       pairingCode: null,
       coupleId: null,
+      isRecoveringPassword: false,
     });
   };
 
@@ -475,6 +488,27 @@ export const RelationshipProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   };
 
+  const resetPassword = async (email: string): Promise<{ success: boolean; message: string }> => {
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+    try {
+      const redirectTo = `${window.location.origin}/update-password`;
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo,
+      });
+      if (error) throw error;
+      setState(prev => ({ ...prev, isLoading: false }));
+      return { success: true, message: 'Đã gửi link khôi phục. Vui lòng kiểm tra email của bạn!' };
+    } catch (e: any) {
+      const errMsg = translateError(e.message);
+      setState(prev => ({ ...prev, isLoading: false, error: errMsg }));
+      return { success: false, message: errMsg };
+    }
+  };
+
+  const finishRecovery = () => {
+    setState(prev => ({ ...prev, isRecoveringPassword: false }));
+  };
+
   const changePassword = async (newPassword: string): Promise<{ success: boolean; message: string }> => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     try {
@@ -503,6 +537,8 @@ export const RelationshipProvider: React.FC<{ children: React.ReactNode }> = ({ 
         connectWithCode,
         register,
         signIn,
+        resetPassword,
+        finishRecovery,
         changePassword,
         clearError,
       }}
